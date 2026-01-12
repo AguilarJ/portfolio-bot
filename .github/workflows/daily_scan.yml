@@ -1,0 +1,36 @@
+name: Daily Portfolio Scan
+
+# 1. THE TRIGGER
+# When do we run?
+on:
+  # Run manually from the Actions tab (for testing)
+  workflow_dispatch:
+  # Run automatically at 6:00 AM UTC (approx 10:00 PM PST / 1:00 AM EST)
+  # You can adjust this time later.
+  schedule:
+    - cron: '0 6 * * *'
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest  # We are renting a Linux computer
+
+    steps:
+      # Step A: Download your code from the repo
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Step B: Install Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      # Step C: Install your libraries (pandas, playwright, etc.)
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install chromium
+
+      # Step D: Run the bot!
+      - name: Run Portfolio Manager
+        run: python portfolio_manager.py
