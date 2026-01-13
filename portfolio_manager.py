@@ -1,4 +1,4 @@
-
+import os
 import time
 import sqlite3
 import logging
@@ -148,7 +148,9 @@ class PortfolioManager:
 
 # --- EXECUTION BLOCK ---
 if __name__ == "__main__":
-    # Now we just instantiate the class and run it. 
-    # This is clean, readable, and professional.
-    bot = PortfolioManager(headless=False)
+    # Check if we are in GitHub (CI) or on Laptop
+    is_cloud = os.getenv('CI') is not None
+
+    # Pass that info to the bot: True (Invisible) for Cloud, False (Visible) for Laptop
+    bot = PortfolioManager(headless=is_cloud)
     bot.run()
