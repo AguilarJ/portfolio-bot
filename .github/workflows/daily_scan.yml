@@ -31,6 +31,10 @@ jobs:
           pip install -r requirements.txt
           python -m playwright install chromium
 
-      # Step D: Run the bot!
+      # --- START OF NEW STEP ---
+      - name: Initialize Database
+        run: python setup_db.py
+      # --- END OF NEW STEP ---
+
       - name: Run Portfolio Manager
         run: python portfolio_manager.py
