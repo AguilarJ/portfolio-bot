@@ -42,20 +42,22 @@ class PortfolioManager:
         except Exception as e:
             self.logger.warning(f"Failed to get price for {ticker}: {e}")
             return None
-
-    def _get_news_cnbc(self, page):
+    def _get_change_cnbc(self, page):
+        """Gets the day's percentage change (e.g., +1.50%)."""
         try:
-            page.mouse.wheel(0, 500)
-            wrapper_selector = ".LatestNews-headlineWrapper"
-            page.wait_for_selector(wrapper_selector, state='attached', timeout=4000)
-            headline = page.locator(wrapper_selector).first.inner_text()
-            return headline
+            # CNBC uses different colors (classes) for Up vs Down vs Flat
+            # We look for ANY of them.
+            selector = ".QuoteStrip-changeDown, .QuoteStrip-changeUp, .QuoteStrip-changeUnchanged"
+            
+            # This gets the whole text like "-1.24 (-0.56%)"
+            full_text = page.locator(selector).first.inner_text()
+            
+            # We only want the part inside parenthesis: (-0.56%)
+            if "(" in full_text and ")" in full_text:
+                return full_text.split("(")[1].replace(")", "")
+            return full_text
         except Exception as e:
-            try:
-                return page.locator(".RiverHeadline-headline").first.inner_text()
-            except:
-                return "No news found"
-
+            return "0.00%"
     def save_to_db(self, ticker, price, shares, value, headline):
         try:
             conn = sqlite3.connect(self.db_name)
@@ -110,38 +112,41 @@ class PortfolioManager:
 
             for ticker in self.tickers:
                 price_str = self._get_price_cnbc(page, ticker)
-                headline = self._get_news_cnbc(page)
+                change_pct = self._get_change_cnbc(page)
 
                 if price_str:
-                    try:
-                        price = float(price_str)
-                        shares = self.portfolio_shares[ticker]
-                        value = price * shares
-                        total_value += value
-                        
-                        clean_headline = headline.replace('\n', ' ').strip()
-                        short_news = (clean_headline[:30] + '..') if len(clean_headline) > 30 else clean_headline
-                        
-                        # Add to report
-                        line = f"{ticker:<8} ${price:<9.2f} {shares:<8} ${value:,.2f}    {short_news}"
-                        report_lines.append(line)
-                        print(line)
+                try:
+                    price = float(price_str)
+                    shares = self.portfolio_shares[ticker]
+                    value = price * shares
+                    total_value += value
+                    
+                    # Add to report
+                    # If positive, add a "+" sign for looks
+                    display_change = change_pct
+                    if "unch" in change_pct.lower():
+                        display_change = "0.00%"
+                    
+                    line = f"{ticker:<8} ${price:<9.2f} {shares:<8} ${value:,.2f}    {display_change}"
+                    report_lines.append(line)
+                    print(line)
 
-                        self.save_to_db(ticker, price, shares, value, clean_headline)
-                        
-                    except ValueError:
-                        self.logger.error(f"Price error: {price_str}")
-                else:
-                    self.logger.error(f"Could not find price for {ticker}")
+                    self.save_to_db(ticker, price, shares, value, change_pct)
+                    
+                except ValueError:
+                    self.logger.error(f"Price error: {price_str}")
+            else:
+                self.logger.error(f"Could not find price for {ticker}")
 
-                time.sleep(1)
-            browser.close()
+            time.sleep(1)
+        browser.close()
 
-        report_lines.append("-" * 65)
-        report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
-        
-        full_report = "\n".join(report_lines)
-        print("-" * 65)
+    report_lines.append("-" * 55)
+    report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
+    
+    full_report = "\n".join(report_lines)
+    print("-" * 55)
+    print(f"💰 TOTAL: ${total_value:,.2f}")
         print(f"💰 TOTAL: ${total_value:,.2f}")
         
         # Send to Discord
