@@ -103,10 +103,11 @@ class PortfolioManager:
         # Start building the report text
         report_lines = []
         
-        # Header Row - COMPACT & RIGHT ALIGNED
-        # We put ($) in the header to save space in the rows
-        report_lines.append(f"{'TICKER':<5} {'PRICE($)':>8} {'SHARES':>7} {'VALUE($)':>11} {'CHANGE':>7}")
-        report_lines.append("-" * 43) # Much shorter line to fit mobile
+        # Header Row
+        # Ticker locked to 8 spaces (Left Aligned)
+        # Others Right Aligned to match the numbers below
+        report_lines.append(f"{'TICKER':<8} {'PRICE':>8} {'SHARES':>8} {'VALUE':>11} {'CHANGE':>7}")
+        report_lines.append("-" * 46)
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
@@ -129,17 +130,15 @@ class PortfolioManager:
                         
                         # Handle shares formatting
                         if isinstance(shares, float):
-                            # For 130.097, show 3 decimals
                             s_fmt = f"{shares:.3f}"
                         else:
-                            # For 127, show clean integer
                             s_fmt = f"{shares}"
 
-                        # THE CLEAN FORMATTING:
-                        # 1. No Dollar signs (Cleaner alignment)
-                        # 2. Tighter spacing (Fits on phone)
-                        # 3. Headers match the numbers (Right aligned)
-                        line = f"{ticker:<5} {price:>8.2f} {s_fmt:>7} {value:>11,.2f} {display_change:>7}"
+                        # THE FIXED GRID:
+                        # Ticker: <8 (Left aligned, always takes 8 spaces)
+                        # Price:  >8 (Right aligned, lines up decimals)
+                        # Shares: >8 (Right aligned, lines up integers vs floats)
+                        line = f"{ticker:<8} {price:>8.2f} {s_fmt:>8} {value:>11,.2f} {display_change:>7}"
                         report_lines.append(line)
                         print(line)
 
@@ -153,15 +152,14 @@ class PortfolioManager:
                 time.sleep(1)
             browser.close()
 
-        report_lines.append("-" * 43)
+        report_lines.append("-" * 46)
         report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
         
         full_report = "\n".join(report_lines)
-        print("-" * 43)
+        print("-" * 46)
         print(f"💰 TOTAL: ${total_value:,.2f}")
         
         self.send_discord_alert(total_value, full_report)
-# This part goes at the very, very bottom (no indentation)
 if __name__ == "__main__":
     is_cloud = os.getenv('CI') is not None
     bot = PortfolioManager(headless=is_cloud)
