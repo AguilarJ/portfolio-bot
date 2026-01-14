@@ -115,23 +115,23 @@ class PortfolioManager:
                 change_pct = self._get_change_cnbc(page)
 
                 if price_str:
-                try:
-                    price = float(price_str)
-                    shares = self.portfolio_shares[ticker]
-                    value = price * shares
-                    total_value += value
+                    try:
+                        price = float(price_str)
+                        shares = self.portfolio_shares[ticker]
+                        value = price * shares
+                        total_value += value
                     
-                    # Add to report
-                    # If positive, add a "+" sign for looks
-                    display_change = change_pct
-                    if "unch" in change_pct.lower():
-                        display_change = "0.00%"
+                        # Add to report
+                        # If positive, add a "+" sign for looks
+                        display_change = change_pct
+                        if "unch" in change_pct.lower():
+                            display_change = "0.00%"
                     
-                    line = f"{ticker:<8} ${price:<9.2f} {shares:<8} ${value:,.2f}    {display_change}"
-                    report_lines.append(line)
-                    print(line)
+                        line = f"{ticker:<8} ${price:<9.2f} {shares:<8} ${value:,.2f}    {display_change}"
+                        report_lines.append(line)
+                        print(line)
 
-                    self.save_to_db(ticker, price, shares, value, change_pct)
+                        self.save_to_db(ticker, price, shares, value, change_pct)
                     
                 except ValueError:
                     self.logger.error(f"Price error: {price_str}")
