@@ -102,9 +102,8 @@ class PortfolioManager:
         
         # Start building the report text
         report_lines = []
-        report_lines.append("-" * 65)
-        report_lines.append(f"{'TICKER':<8} {'PRICE':<10} {'SHARES':<8} {'VALUE':<12} {'NEWS'}")
-        report_lines.append("-" * 65)
+        report_lines.append(f"{'TICKER':<6} {'PRICE':>10} {'SHARES':>8} {'VALUE':>12} {'CHANGE':>8}")
+        report_lines.append("-" * 50)
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
@@ -127,12 +126,22 @@ class PortfolioManager:
                         if "unch" in change_pct.lower():
                             display_change = "0.00%"
                     
-                        line = f"{ticker:<8} ${price:<9.2f} {shares:<8} ${value:,.2f}    {display_change}"
+                        # The Magic Fix:
+                        # :>10.2f  -> Right align, 10 spaces total, 2 decimals
+                        # :>8      -> Right align, 8 spaces total
+                        # :>12,.2f -> Right align, 12 spaces, commas, 2 decimals
+                        
+                        # Handle fractional shares (like VXUS) nicely
+                        if isinstance(shares, float):
+                            shares_str = f"{shares:.3f}" # Show 3 decimals for VXUS
+                        else:
+                            shares_str = f"{shares}"
+
+                        line = f"{ticker:<6} ${price:>9.2f} {shares_str:>8} ${value:>11,.2f} {display_change:>8}"
                         report_lines.append(line)
                         print(line)
 
                         self.save_to_db(ticker, price, shares, value, change_pct)
-                    
                     except ValueError:
                         self.logger.error(f"Price error: {price_str}")
                 else:
@@ -141,11 +150,11 @@ class PortfolioManager:
                 time.sleep(1)
             browser.close()
 
-        report_lines.append("-" * 55)
+        report_lines.append("-" * 50)
         report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
     
         full_report = "\n".join(report_lines)
-        print("-" * 55)
+        print("-" * 50)
         print(f"💰 TOTAL: ${total_value:,.2f}")
         print(f"💰 TOTAL: ${total_value:,.2f}")
         
