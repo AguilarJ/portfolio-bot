@@ -103,10 +103,10 @@ class PortfolioManager:
         # Start building the report text
         report_lines = []
         
-        # Header Row - EVERYTHING LEFT ALIGNED (<)
-        # We define strictly fixed widths for every column
-        report_lines.append(f"{'TICKER':<8} {'PRICE':<10} {'SHARES':<10} {'VALUE':<12} {'CHANGE':<8}")
-        report_lines.append("-" * 55)
+        # Header Row - Shortened to fit mobile
+        # TICK (5) PRICE (7) SHARE (7) VALUE (8) CHG (6)
+        report_lines.append(f"{'TICK':<5} {'PRICE':<7} {'SHARE':<7} {'VALUE':<9} {'CHG'}")
+        report_lines.append("-" * 38)
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
@@ -128,15 +128,16 @@ class PortfolioManager:
                             display_change = "0.00%"
                         
                         # Handle shares formatting
+                        # Force 3 decimals for floats, integer for ints to save space
                         if isinstance(shares, float):
-                            s_fmt = f"{shares:.3f}"
+                            s_fmt = f"{shares:.2f}" # Shortened to .2f to save space
                         else:
                             s_fmt = f"{shares}"
 
-                        # THE STRAIGHT GRID:
-                        # < means "Start on the left, and fill the rest with space"
-                        # This creates perfect vertical "walls" between data
-                        line = f"{ticker:<8} {price:<10.2f} {s_fmt:<10} {value:<12,.2f} {display_change:<8}"
+                        # THE MOBILE SLIM GRID:
+                        # Value: .0f (No decimals/cents) -> Saves 3 chars
+                        # Ticker: <5 (GOOGL fits exactly)
+                        line = f"{ticker:<5} {price:<7.2f} {s_fmt:<7} {value:<9,.0f} {display_change}"
                         report_lines.append(line)
                         print(line)
 
@@ -150,11 +151,11 @@ class PortfolioManager:
                 time.sleep(1)
             browser.close()
 
-        report_lines.append("-" * 55)
+        report_lines.append("-" * 38)
         report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
         
         full_report = "\n".join(report_lines)
-        print("-" * 55)
+        print("-" * 38)
         print(f"💰 TOTAL: ${total_value:,.2f}")
         
         self.send_discord_alert(total_value, full_report)
