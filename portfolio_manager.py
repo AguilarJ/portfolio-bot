@@ -103,9 +103,10 @@ class PortfolioManager:
         # Start building the report text
         report_lines = []
         
-        # Headers
-        report_lines.append(f"{'TICKER':<6} {'PRICE':>10} {'SHARES':>8} {'VALUE':>13} {'CHANGE':>8}")
-        report_lines.append("-" * 52)
+        # Header Row - COMPACT & RIGHT ALIGNED
+        # We put ($) in the header to save space in the rows
+        report_lines.append(f"{'TICKER':<5} {'PRICE($)':>8} {'SHARES':>7} {'VALUE($)':>11} {'CHANGE':>7}")
+        report_lines.append("-" * 43) # Much shorter line to fit mobile
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
@@ -122,24 +123,23 @@ class PortfolioManager:
                         value = price * shares
                         total_value += value
                         
-                        # Clean up the change text
                         display_change = change_pct
                         if "unch" in change_pct.lower():
                             display_change = "0.00%"
                         
-                        # 1. Format the numbers with $ first (e.g. "$85.35")
-                        p_fmt = f"${price:,.2f}"
-                        v_fmt = f"${value:,.2f}"
-                        
-                        # 2. Handle shares (integers vs floats)
+                        # Handle shares formatting
                         if isinstance(shares, float):
+                            # For 130.097, show 3 decimals
                             s_fmt = f"{shares:.3f}"
                         else:
+                            # For 127, show clean integer
                             s_fmt = f"{shares}"
 
-                        # 3. Align the PRE-FORMATTED strings
-                        # >10 means "take the string '$85.35' and push it to the right of a 10-char space"
-                        line = f"{ticker:<6} {p_fmt:>10} {s_fmt:>8} {v_fmt:>13} {display_change:>8}"
+                        # THE CLEAN FORMATTING:
+                        # 1. No Dollar signs (Cleaner alignment)
+                        # 2. Tighter spacing (Fits on phone)
+                        # 3. Headers match the numbers (Right aligned)
+                        line = f"{ticker:<5} {price:>8.2f} {s_fmt:>7} {value:>11,.2f} {display_change:>7}"
                         report_lines.append(line)
                         print(line)
 
@@ -153,15 +153,14 @@ class PortfolioManager:
                 time.sleep(1)
             browser.close()
 
-        report_lines.append("-" * 52)
+        report_lines.append("-" * 43)
         report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
         
         full_report = "\n".join(report_lines)
-        print("-" * 52)
+        print("-" * 43)
         print(f"💰 TOTAL: ${total_value:,.2f}")
         
         self.send_discord_alert(total_value, full_report)
-
 # This part goes at the very, very bottom (no indentation)
 if __name__ == "__main__":
     is_cloud = os.getenv('CI') is not None
