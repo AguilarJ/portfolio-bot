@@ -133,20 +133,20 @@ class PortfolioManager:
 
                         self.save_to_db(ticker, price, shares, value, change_pct)
                     
-                except ValueError:
-                    self.logger.error(f"Price error: {price_str}")
-            else:
-                self.logger.error(f"Could not find price for {ticker}")
+                    except ValueError:
+                        self.logger.error(f"Price error: {price_str}")
+                else:
+                    self.logger.error(f"Could not find price for {ticker}")
 
-            time.sleep(1)
-        browser.close()
+                time.sleep(1)
+            browser.close()
 
-    report_lines.append("-" * 55)
-    report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
+        report_lines.append("-" * 55)
+        report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
     
-    full_report = "\n".join(report_lines)
-    print("-" * 55)
-    print(f"💰 TOTAL: ${total_value:,.2f}")
+        full_report = "\n".join(report_lines)
+        print("-" * 55)
+        print(f"💰 TOTAL: ${total_value:,.2f}")
         print(f"💰 TOTAL: ${total_value:,.2f}")
         
         # Send to Discord
