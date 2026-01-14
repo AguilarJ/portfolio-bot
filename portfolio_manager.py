@@ -103,11 +103,10 @@ class PortfolioManager:
         # Start building the report text
         report_lines = []
         
-        # Header Row
-        # Ticker locked to 8 spaces (Left Aligned)
-        # Others Right Aligned to match the numbers below
-        report_lines.append(f"{'TICKER':<8} {'PRICE':>8} {'SHARES':>8} {'VALUE':>11} {'CHANGE':>7}")
-        report_lines.append("-" * 46)
+        # Header Row - EVERYTHING LEFT ALIGNED (<)
+        # We define strictly fixed widths for every column
+        report_lines.append(f"{'TICKER':<8} {'PRICE':<10} {'SHARES':<10} {'VALUE':<12} {'CHANGE':<8}")
+        report_lines.append("-" * 55)
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
@@ -134,11 +133,10 @@ class PortfolioManager:
                         else:
                             s_fmt = f"{shares}"
 
-                        # THE FIXED GRID:
-                        # Ticker: <8 (Left aligned, always takes 8 spaces)
-                        # Price:  >8 (Right aligned, lines up decimals)
-                        # Shares: >8 (Right aligned, lines up integers vs floats)
-                        line = f"{ticker:<8} {price:>8.2f} {s_fmt:>8} {value:>11,.2f} {display_change:>7}"
+                        # THE STRAIGHT GRID:
+                        # < means "Start on the left, and fill the rest with space"
+                        # This creates perfect vertical "walls" between data
+                        line = f"{ticker:<8} {price:<10.2f} {s_fmt:<10} {value:<12,.2f} {display_change:<8}"
                         report_lines.append(line)
                         print(line)
 
@@ -152,11 +150,11 @@ class PortfolioManager:
                 time.sleep(1)
             browser.close()
 
-        report_lines.append("-" * 46)
+        report_lines.append("-" * 55)
         report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
         
         full_report = "\n".join(report_lines)
-        print("-" * 46)
+        print("-" * 55)
         print(f"💰 TOTAL: ${total_value:,.2f}")
         
         self.send_discord_alert(total_value, full_report)
