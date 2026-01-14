@@ -102,8 +102,10 @@ class PortfolioManager:
         
         # Start building the report text
         report_lines = []
-        report_lines.append(f"{'TICKER':<6} {'PRICE':>10} {'SHARES':>8} {'VALUE':>12} {'CHANGE':>8}")
-        report_lines.append("-" * 50)
+        
+        # Headers
+        report_lines.append(f"{'TICKER':<6} {'PRICE':>10} {'SHARES':>8} {'VALUE':>13} {'CHANGE':>8}")
+        report_lines.append("-" * 52)
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
@@ -119,29 +121,30 @@ class PortfolioManager:
                         shares = self.portfolio_shares[ticker]
                         value = price * shares
                         total_value += value
-                    
-                        # Add to report
-                        # If positive, add a "+" sign for looks
+                        
+                        # Clean up the change text
                         display_change = change_pct
                         if "unch" in change_pct.lower():
                             display_change = "0.00%"
-                    
-                        # The Magic Fix:
-                        # :>10.2f  -> Right align, 10 spaces total, 2 decimals
-                        # :>8      -> Right align, 8 spaces total
-                        # :>12,.2f -> Right align, 12 spaces, commas, 2 decimals
                         
-                        # Handle fractional shares (like VXUS) nicely
+                        # 1. Format the numbers with $ first (e.g. "$85.35")
+                        p_fmt = f"${price:,.2f}"
+                        v_fmt = f"${value:,.2f}"
+                        
+                        # 2. Handle shares (integers vs floats)
                         if isinstance(shares, float):
-                            shares_str = f"{shares:.3f}" # Show 3 decimals for VXUS
+                            s_fmt = f"{shares:.3f}"
                         else:
-                            shares_str = f"{shares}"
+                            s_fmt = f"{shares}"
 
-                        line = f"{ticker:<6} ${price:>9.2f} {shares_str:>8} ${value:>11,.2f} {display_change:>8}"
+                        # 3. Align the PRE-FORMATTED strings
+                        # >10 means "take the string '$85.35' and push it to the right of a 10-char space"
+                        line = f"{ticker:<6} {p_fmt:>10} {s_fmt:>8} {v_fmt:>13} {display_change:>8}"
                         report_lines.append(line)
                         print(line)
 
                         self.save_to_db(ticker, price, shares, value, change_pct)
+                        
                     except ValueError:
                         self.logger.error(f"Price error: {price_str}")
                 else:
@@ -150,15 +153,13 @@ class PortfolioManager:
                 time.sleep(1)
             browser.close()
 
-        report_lines.append("-" * 50)
+        report_lines.append("-" * 52)
         report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
-    
+        
         full_report = "\n".join(report_lines)
-        print("-" * 50)
-        print(f"💰 TOTAL: ${total_value:,.2f}")
+        print("-" * 52)
         print(f"💰 TOTAL: ${total_value:,.2f}")
         
-        # Send to Discord
         self.send_discord_alert(total_value, full_report)
 
 # This part goes at the very, very bottom (no indentation)
