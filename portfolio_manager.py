@@ -172,7 +172,7 @@ class PortfolioManager:
         print("-" * 42)
         print(f"💰 TOTAL: ${total_value:,.2f}")
         
-        self.send_discord_alert(total_value, full_report))
+        self.send_discord_alert(total_value, full_report)
 if __name__ == "__main__":
     is_cloud = os.getenv('CI') is not None
     bot = PortfolioManager(headless=is_cloud)
