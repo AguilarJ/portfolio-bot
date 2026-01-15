@@ -103,10 +103,10 @@ class PortfolioManager:
         # Start building the report text
         report_lines = []
         
-        # Header Row - Shortened to fit mobile
-        # TICK (5) PRICE (7) SHARE (7) VALUE (8) CHG (6)
-        report_lines.append(f"{'TICK':<5} {'PRICE':<7} {'SHARE':<7} {'VALUE':<9} {'CHG'}")
-        report_lines.append("-" * 38)
+        # HEADER: Strictly 8 characters per column, NO spaces between them.
+        # Total width = 40 characters (Safe for most mobile screens)
+        report_lines.append(f"{'TICKER':<8}{'PRICE':<8}{'SHARES':<8}{'VALUE':<8}{'CHANGE':<8}")
+        report_lines.append("-" * 40)
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
@@ -127,17 +127,26 @@ class PortfolioManager:
                         if "unch" in change_pct.lower():
                             display_change = "0.00%"
                         
-                        # Handle shares formatting
-                        # Force 3 decimals for floats, integer for ints to save space
+                        # FORMATTING DATA TO FIT THE BLOCKS
+                        
+                        # 1. Price: $85.35
+                        p_fmt = f"${price:.2f}"
+                        
+                        # 2. Shares: 127 or 130.1
                         if isinstance(shares, float):
-                            s_fmt = f"{shares:.2f}" # Shortened to .2f to save space
+                            s_fmt = f"{shares:.1f}" # 1 decimal max to save space
                         else:
                             s_fmt = f"{shares}"
 
-                        # THE MOBILE SLIM GRID:
-                        # Value: .0f (No decimals/cents) -> Saves 3 chars
-                        # Ticker: <5 (GOOGL fits exactly)
-                        line = f"{ticker:<5} {price:<7.2f} {s_fmt:<7} {value:<9,.0f} {display_change}"
+                        # 3. Value: $10k (No cents, no commas if possible to save space)
+                        # We use "10839" (no comma) if it's huge, or "10,839" if it fits.
+                        # Let's try standard no-cents: $10,839
+                        v_fmt = f"${value:,.0f}"
+
+                        # THE STRICT GRID
+                        # We remove the spaces between the brackets {}
+                        # Each block is strictly <8 characters.
+                        line = f"{ticker:<8}{p_fmt:<8}{s_fmt:<8}{v_fmt:<8}{display_change:<8}"
                         report_lines.append(line)
                         print(line)
 
@@ -151,11 +160,11 @@ class PortfolioManager:
                 time.sleep(1)
             browser.close()
 
-        report_lines.append("-" * 38)
+        report_lines.append("-" * 40)
         report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
         
         full_report = "\n".join(report_lines)
-        print("-" * 38)
+        print("-" * 40)
         print(f"💰 TOTAL: ${total_value:,.2f}")
         
         self.send_discord_alert(total_value, full_report)
