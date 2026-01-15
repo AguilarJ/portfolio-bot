@@ -105,11 +105,11 @@ class PortfolioManager:
         # ---------------------------------------------------------
         # 📐 COLUMN WIDTH SETTINGS
         # Change these numbers here to adjust the table size!
-        w_tick  = 6   # Ticker symbol
-        w_price = 10  # Price (Needs 10 for $1,263.00 + space)
-        w_share = 7   # Share count
-        w_value = 10  # Total Value
-        w_chg   = 7   # Change %
+        w_tick  = 7   # Ticker symbol
+        w_price = 12  # Price (Needs 10 for $1,263.00 + space)
+        w_share = 8   # Share count
+        w_value = 12  # Total Value
+        w_chg   = 8   # Change %
         # ---------------------------------------------------------
 
         # 1. THE HEADER
