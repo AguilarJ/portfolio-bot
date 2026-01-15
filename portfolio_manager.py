@@ -102,22 +102,22 @@ class PortfolioManager:
         
         report_lines = []
         
-        # ---------------------------------------------------
-        # 📐 THE "BRICK WALL" LAYOUT
-        # 1. We define the width of the TEXT, not the gap.
-        # 2. We add explicit "  " spacers in the f-string below.
-        # ---------------------------------------------------
-        w_tick  = 5    # "UBER "
-        w_price = 9    # "$1,263.00" (Exact fit for ASML)
-        w_share = 6    # "130.1 "
-        w_value = 8    # "$47,670 "
-        w_chg   = 7    # "-0.15% "
+        # -----------------------------------------------------------
+        # 📐 THE "PLUS TWO" RULE
+        # We define widths that are strictly larger than the data.
+        # This guarantees at least 1-2 spaces of air between columns.
+        # -----------------------------------------------------------
+        w_tick  = 7   # GOOGL (5) + 2 spaces buffer
+        w_price = 11  # $1,263.00 (9) + 2 spaces buffer
+        w_share = 8   # 130.1 (5) + 3 spaces buffer
+        w_value = 9   # $14,000 (7) + 2 spaces buffer
+        w_chg   = 7   # -0.15% (6) + 1 space buffer
         
         # 1. HEADER
-        # Note the "  " strings between the variables. These are the spacers.
-        header = f"{'TICK':<{w_tick}}  {'PRICE':<{w_price}}  {'SHARES':<{w_share}}  {'VALUE':<{w_value}}  {'CHANGE':<{w_chg}}"
+        # We align headers to the Left (<) using the safe widths
+        header = f"{'TICK':<{w_tick}}{'PRICE':<{w_price}}{'SHARES':<{w_share}}{'VALUE':<{w_value}}{'CHG':<{w_chg}}"
         report_lines.append(header)
-        report_lines.append("-" * 45) # Slightly wider to accommodate spacers
+        report_lines.append("-" * 42)
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
@@ -139,24 +139,18 @@ class PortfolioManager:
                             display_change = "0.00%"
                         
                         # 2. DATA PREP
-                        p_fmt = f"${price:,.2f}"      # $1,263.00
-                        v_fmt = f"${value:,.0f}"      # $47,670
+                        p_fmt = f"${price:,.2f}"
+                        v_fmt = f"${value:,.0f}" # No cents to keep it slim
                         
                         if isinstance(shares, float):
                             s_fmt = f"{shares:.1f}"
                         else:
                             s_fmt = f"{shares}"
 
-                        # 3. THE ROW WITH "BRICK WALL" SPACERS
-                        # We force 2 spaces ("  ") between every block.
-                        # Even if p_fmt fills the whole 9 spaces, the "  " protects the next column.
-                        line = (
-                            f"{ticker:<{w_tick}}  "
-                            f"{p_fmt:<{w_price}}  "
-                            f"{s_fmt:<{w_share}}  "
-                            f"{v_fmt:<{w_value}}  "
-                            f"{display_change:<{w_chg}}"
-                        )
+                        # 3. THE ROW
+                        # Since w_tick is 7, "GOOGL" (5) will have 2 spaces of padding automatically.
+                        # Since w_price is 11, "$1263.00" (9) will have 2 spaces of padding automatically.
+                        line = f"{ticker:<{w_tick}}{p_fmt:<{w_price}}{s_fmt:<{w_share}}{v_fmt:<{w_value}}{display_change:<{w_chg}}"
                         
                         report_lines.append(line)
                         print(line)
@@ -168,6 +162,17 @@ class PortfolioManager:
                 else:
                     self.logger.error(f"Could not find price for {ticker}")
 
+                time.sleep(1)
+            browser.close()
+
+        report_lines.append("-" * 42)
+        report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
+        
+        full_report = "\n".join(report_lines)
+        print("-" * 42)
+        print(f"💰 TOTAL: ${total_value:,.2f}")
+        
+        self.send_discord_alert(total_value, full_report)
                 time.sleep(1)
             browser.close()
 
