@@ -102,11 +102,24 @@ class PortfolioManager:
         
         report_lines = []
         
-        # 1. HEADER: Adjusted widths based on "Worst Case" data size
-        # Ticker(6) Price(9) Share(6) Value(9) Chg(7) = 37 chars total
-        header = f"{'TICK':<6}{'PRICE':<9}{'SHARE':<6}{'VALUE':<9}{'CHG':<7}"
+        # ---------------------------------------------------------
+        # 📐 COLUMN WIDTH SETTINGS
+        # Change these numbers here to adjust the table size!
+        w_tick  = 6   # Ticker symbol
+        w_price = 10  # Price (Needs 10 for $1,263.00 + space)
+        w_share = 7   # Share count
+        w_value = 10  # Total Value
+        w_chg   = 7   # Change %
+        # ---------------------------------------------------------
+
+        # 1. THE HEADER
+        # We use the variables above to ensure headers line up EXACTLY with data
+        header = f"{'TICK':<{w_tick}}{'PRICE':<{w_price}}{'SHARE':<{w_share}}{'VALUE':<{w_value}}{'CHG':<{w_chg}}"
         report_lines.append(header)
-        report_lines.append("-" * 37)
+        
+        # Calculate total line length for the dashed line
+        total_width = w_tick + w_price + w_share + w_value + w_chg
+        report_lines.append("-" * total_width)
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
@@ -128,22 +141,18 @@ class PortfolioManager:
                             display_change = "0.00%"
                         
                         # 2. DATA FORMATTING
-                        
-                        # Price: $1,263.00 (We need space for the comma on expensive stocks!)
                         p_fmt = f"${price:,.2f}"
+                        v_fmt = f"${value:,.0f}" # No cents to save space
                         
-                        # Shares: 130.1
                         if isinstance(shares, float):
                             s_fmt = f"{shares:.1f}"
                         else:
                             s_fmt = f"{shares}"
 
-                        # Value: $47,670 (No decimals to save space)
-                        v_fmt = f"${value:,.0f}"
-
-                        # 3. THE SAFE GRID
-                        # We give Price 9 spaces so ASML ($1,263.00) fits with 1 space left over.
-                        line = f"{ticker:<6}{p_fmt:<9}{s_fmt:<6}{v_fmt:<9}{display_change:<7}"
+                        # 3. THE ROW
+                        # We use the same variables (w_tick, w_price...)
+                        line = f"{ticker:<{w_tick}}{p_fmt:<{w_price}}{s_fmt:<{w_share}}{v_fmt:<{w_value}}{display_change:<{w_chg}}"
+                        
                         report_lines.append(line)
                         print(line)
 
@@ -157,11 +166,11 @@ class PortfolioManager:
                 time.sleep(1)
             browser.close()
 
-        report_lines.append("-" * 37)
+        report_lines.append("-" * total_width)
         report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
         
         full_report = "\n".join(report_lines)
-        print("-" * 37)
+        print("-" * total_width)
         print(f"💰 TOTAL: ${total_value:,.2f}")
         
         self.send_discord_alert(total_value, full_report)
