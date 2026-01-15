@@ -102,24 +102,22 @@ class PortfolioManager:
         
         report_lines = []
         
-        # ---------------------------------------------------------
-        # 📐 COLUMN WIDTH SETTINGS
-        # Change these numbers here to adjust the table size!
-        w_tick  = 7   # Ticker symbol
-        w_price = 12  # Price (Needs 10 for $1,263.00 + space)
-        w_share = 8   # Share count
-        w_value = 12  # Total Value
-        w_chg   = 8   # Change %
-        # ---------------------------------------------------------
-
-        # 1. THE HEADER
-        # We use the variables above to ensure headers line up EXACTLY with data
-        header = f"{'TICK':<{w_tick}}{'PRICE':<{w_price}}{'SHARE':<{w_share}}{'VALUE':<{w_value}}{'CHG':<{w_chg}}"
-        report_lines.append(header)
+        # ---------------------------------------------------
+        # 📐 THE "BRICK WALL" LAYOUT
+        # 1. We define the width of the TEXT, not the gap.
+        # 2. We add explicit "  " spacers in the f-string below.
+        # ---------------------------------------------------
+        w_tick  = 5    # "UBER "
+        w_price = 9    # "$1,263.00" (Exact fit for ASML)
+        w_share = 6    # "130.1 "
+        w_value = 8    # "$47,670 "
+        w_chg   = 7    # "-0.15% "
         
-        # Calculate total line length for the dashed line
-        total_width = w_tick + w_price + w_share + w_value + w_chg
-        report_lines.append("-" * total_width)
+        # 1. HEADER
+        # Note the "  " strings between the variables. These are the spacers.
+        header = f"{'TICK':<{w_tick}}  {'PRICE':<{w_price}}  {'SHARES':<{w_share}}  {'VALUE':<{w_value}}  {'CHANGE':<{w_chg}}"
+        report_lines.append(header)
+        report_lines.append("-" * 45) # Slightly wider to accommodate spacers
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
@@ -140,18 +138,25 @@ class PortfolioManager:
                         if "unch" in change_pct.lower():
                             display_change = "0.00%"
                         
-                        # 2. DATA FORMATTING
-                        p_fmt = f"${price:,.2f}"
-                        v_fmt = f"${value:,.0f}" # No cents to save space
+                        # 2. DATA PREP
+                        p_fmt = f"${price:,.2f}"      # $1,263.00
+                        v_fmt = f"${value:,.0f}"      # $47,670
                         
                         if isinstance(shares, float):
                             s_fmt = f"{shares:.1f}"
                         else:
                             s_fmt = f"{shares}"
 
-                        # 3. THE ROW
-                        # We use the same variables (w_tick, w_price...)
-                        line = f"{ticker:<{w_tick}}{p_fmt:<{w_price}}{s_fmt:<{w_share}}{v_fmt:<{w_value}}{display_change:<{w_chg}}"
+                        # 3. THE ROW WITH "BRICK WALL" SPACERS
+                        # We force 2 spaces ("  ") between every block.
+                        # Even if p_fmt fills the whole 9 spaces, the "  " protects the next column.
+                        line = (
+                            f"{ticker:<{w_tick}}  "
+                            f"{p_fmt:<{w_price}}  "
+                            f"{s_fmt:<{w_share}}  "
+                            f"{v_fmt:<{w_value}}  "
+                            f"{display_change:<{w_chg}}"
+                        )
                         
                         report_lines.append(line)
                         print(line)
@@ -166,11 +171,11 @@ class PortfolioManager:
                 time.sleep(1)
             browser.close()
 
-        report_lines.append("-" * total_width)
+        report_lines.append("-" * 45)
         report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
         
         full_report = "\n".join(report_lines)
-        print("-" * total_width)
+        print("-" * 45)
         print(f"💰 TOTAL: ${total_value:,.2f}")
         
         self.send_discord_alert(total_value, full_report)
