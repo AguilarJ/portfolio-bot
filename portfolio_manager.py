@@ -124,7 +124,7 @@ class PortfolioManager:
                 <h2>📊 Portfolio Report</h2>
                 <table>
                     <tr>
-                        <th>TICKER</th> <th>PRICE</th> <th>SHARES</th> <th>VALUE</th> <th>CHG</th>
+                        <th>TICKER</th> <th>PRICE</th> <th>SHARES</th> <th>VALUE</th> <th>CHANGE</th>
                     </tr>
                     {rows}
                 </table>
