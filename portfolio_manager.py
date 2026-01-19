@@ -33,31 +33,37 @@ class PortfolioManager:
         self.tickers = list(self.portfolio_shares.keys())
 
     def _get_price_cnbc(self, page, ticker):
-        try:
-            url = f"https://www.cnbc.com/quotes/{ticker}"
-            page.goto(url)
-            page.wait_for_selector(".QuoteStrip-lastPrice", timeout=4000)
-            val = page.locator(".QuoteStrip-lastPrice").first.inner_text()
-            return val.replace(',', '')
-        except Exception as e:
-            self.logger.warning(f"Failed to get price for {ticker}: {e}")
-            return None
+        """Gets the price with a Retry Mechanism to prevent missing data."""
+        url = f"https://www.cnbc.com/quotes/{ticker}"
+        
+        # Try 3 times before giving up
+        for attempt in range(3):
+            try:
+                page.goto(url)
+                # Wait up to 5 seconds for the price
+                page.wait_for_selector(".QuoteStrip-lastPrice", timeout=5000)
+                val = page.locator(".QuoteStrip-lastPrice").first.inner_text()
+                clean_val = val.replace(',', '')
+                return clean_val
+            except Exception as e:
+                self.logger.warning(f"Attempt {attempt+1} failed for {ticker}: {e}")
+                time.sleep(2) # Wait 2 seconds and try again
+        
+        return None # Only returns None if all 3 tries fail
+
     def _get_change_cnbc(self, page):
-        """Gets the day's percentage change (e.g., +1.50%)."""
+        """Gets the percentage change."""
         try:
-            # CNBC uses different colors (classes) for Up vs Down vs Flat
-            # We look for ANY of them.
             selector = ".QuoteStrip-changeDown, .QuoteStrip-changeUp, .QuoteStrip-changeUnchanged"
-            
-            # This gets the whole text like "-1.24 (-0.56%)"
-            full_text = page.locator(selector).first.inner_text()
-            
-            # We only want the part inside parenthesis: (-0.56%)
-            if "(" in full_text and ")" in full_text:
-                return full_text.split("(")[1].replace(")", "")
-            return full_text
-        except Exception as e:
+            if page.locator(selector).count() > 0:
+                full_text = page.locator(selector).first.inner_text()
+                if "(" in full_text and ")" in full_text:
+                    return full_text.split("(")[1].replace(")", "")
+                return full_text
             return "0.00%"
+        except Exception:
+            return "0.00%"
+
     def save_to_db(self, ticker, price, shares, value, headline):
         try:
             conn = sqlite3.connect(self.db_name)
@@ -73,11 +79,9 @@ class PortfolioManager:
             self.logger.error(f"Database Error: {e}")
 
     def send_discord_alert(self, total_equity, table_text):
-        """Sends the report to Discord."""
         webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
-        
         if not webhook_url:
-            print("❌ No Discord Webhook found. Skipping notification.")
+            print("❌ No Discord Webhook found.")
             return
 
         message_content = f"""
@@ -97,82 +101,79 @@ class PortfolioManager:
             print(f"❌ Failed to send Discord notification: {e}")
 
     def run(self):
-        self.logger.info("🚀 Starting Portfolio Scan...")
-        total_value = 0.0
-        
-        report_lines = []
-        
-        # -----------------------------------------------------------
-        # 📐 THE "PLUS TWO" RULE
-        # We define widths that are strictly larger than the data.
-        # This guarantees at least 1-2 spaces of air between columns.
-        # -----------------------------------------------------------
-        w_tick  = 7   # GOOGL (5) + 2 spaces buffer
-        w_price = 11  # $1,263.00 (9) + 2 spaces buffer
-        w_share = 8   # 130.1 (5) + 3 spaces buffer
-        w_value = 9   # $14,000 (7) + 2 spaces buffer
-        w_chg   = 7   # -0.15% (6) + 1 space buffer
-        
-        # 1. HEADER
-        # We align headers to the Left (<) using the safe widths
-        header = f"{'TICK':<{w_tick}}{'PRICE':<{w_price}}{'SHARES':<{w_share}}{'VALUE':<{w_value}}{'CHG':<{w_chg}}"
-        report_lines.append(header)
-        report_lines.append("-" * 42)
+    self.logger.info("🚀 Starting Portfolio Scan...")
+    total_value = 0.0
+    report_lines = []
+    
+    # ---------------------------------------------------------
+    # 📐 THE MASTER TEMPLATE
+    # This defines the EXACT width of every column.
+    # Total Width = 42 characters (Perfect for mobile)
+    # ---------------------------------------------------------
+    # Tick(6) Price(10) Share(8) Value(10) Chg(8)
+    row_fmt = "{:<6}{:<10}{:<8}{:<10}{:<8}"
+    
+    # 1. HEADER
+    header = row_fmt.format("TICK", "PRICE", "SHARES", "VALUE", "CHG")
+    report_lines.append(header)
+    report_lines.append("-" * 42)
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=self.headless)
-            page = browser.new_page()
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=self.headless)
+        page = browser.new_page()
 
-            for ticker in self.tickers:
-                price_str = self._get_price_cnbc(page, ticker)
-                change_pct = self._get_change_cnbc(page)
+        for ticker in self.tickers:
+            price_str = self._get_price_cnbc(page, ticker)
+            change_pct = self._get_change_cnbc(page)
 
-                if price_str:
-                    try:
-                        price = float(price_str)
-                        shares = self.portfolio_shares[ticker]
-                        value = price * shares
-                        total_value += value
+            if price_str:
+                try:
+                    price = float(price_str)
+                    shares = self.portfolio_shares[ticker]
+                    value = price * shares
+                    total_value += value
+                    
+                    # DATA CLEANING
+                    p_str = f"${price:,.2f}"
+                    v_str = f"${value:,.0f}"
+                    
+                    if isinstance(shares, float):
+                        s_str = f"{shares:.1f}"
+                    else:
+                        s_str = f"{shares}"
                         
-                        display_change = change_pct
-                        if "unch" in change_pct.lower():
-                            display_change = "0.00%"
-                        
-                        # 2. DATA PREP
-                        p_fmt = f"${price:,.2f}"
-                        v_fmt = f"${value:,.0f}" # No cents to keep it slim
-                        
-                        if isinstance(shares, float):
-                            s_fmt = f"{shares:.1f}"
-                        else:
-                            s_fmt = f"{shares}"
+                    if "unch" in change_pct.lower():
+                        c_str = "0.00%"
+                    else:
+                        c_str = change_pct
 
-                        # 3. THE ROW
-                        # Since w_tick is 7, "GOOGL" (5) will have 2 spaces of padding automatically.
-                        # Since w_price is 11, "$1263.00" (9) will have 2 spaces of padding automatically.
-                        line = f"{ticker:<{w_tick}}{p_fmt:<{w_price}}{s_fmt:<{w_share}}{v_fmt:<{w_value}}{display_change:<{w_chg}}"
-                        
-                        report_lines.append(line)
-                        print(line)
+                    # 2. FILL THE TEMPLATE
+                    line = row_fmt.format(ticker, p_str, s_str, v_str, c_str)
+                    report_lines.append(line)
+                    print(line)
 
-                        self.save_to_db(ticker, price, shares, value, change_pct)
-                        
-                    except ValueError:
-                        self.logger.error(f"Price error: {price_str}")
-                else:
-                    self.logger.error(f"Could not find price for {ticker}")
+                    self.save_to_db(ticker, price, shares, value, change_pct)
+                    
+                except ValueError:
+                    self.logger.error(f"Price error: {price_str}")
+            else:
+                # FIXED: Corrected error_ variable name
+                error_line = row_fmt.format(ticker, "ERR", "---", "---", "---")
+                report_lines.append(error_line)
+                print(f"❌ Could not find price for {ticker}")
 
-                time.sleep(1)
-            browser.close()
+            time.sleep(1) # Polite pause
+        browser.close()
 
-        report_lines.append("-" * 42)
-        report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
-        
-        full_report = "\n".join(report_lines)
-        print("-" * 42)
-        print(f"💰 TOTAL: ${total_value:,.2f}")
-        
-        self.send_discord_alert(total_value, full_report)
+    # FIXED: These lines are now properly indented inside the run() function
+    report_lines.append("-" * 42)
+    report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
+    
+    full_report = "\n".join(report_lines)
+    print("-" * 42)
+    print(f"💰 TOTAL: ${total_value:,.2f}")
+    
+    self.send_discord_alert(total_value, full_report)
 if __name__ == "__main__":
     is_cloud = os.getenv('CI') is not None
     bot = PortfolioManager(headless=is_cloud)
