@@ -101,9 +101,9 @@ class PortfolioManager:
             print(f"❌ Failed to send Discord notification: {e}")
 
     def run(self):
-    self.logger.info("🚀 Starting Portfolio Scan...")
-    total_value = 0.0
-    report_lines = []
+        self.logger.info("🚀 Starting Portfolio Scan...")
+        total_value = 0.0
+        report_lines = []
     
     # ---------------------------------------------------------
     # 📐 THE MASTER TEMPLATE
@@ -111,67 +111,65 @@ class PortfolioManager:
     # Total Width = 42 characters (Perfect for mobile)
     # ---------------------------------------------------------
     # Tick(6) Price(10) Share(8) Value(10) Chg(8)
-    row_fmt = "{:<6}{:<10}{:<8}{:<10}{:<8}"
+        row_fmt = "{:<6}{:<10}{:<8}{:<10}{:<8}"
     
     # 1. HEADER
-    header = row_fmt.format("TICK", "PRICE", "SHARES", "VALUE", "CHG")
-    report_lines.append(header)
-    report_lines.append("-" * 42)
+        header = row_fmt.format("TICK", "PRICE", "SHARES", "VALUE", "CHG")
+        report_lines.append(header)
+        report_lines.append("-" * 42)
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=self.headless)
-        page = browser.new_page()
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=self.headless)
+            page = browser.new_page()
 
-        for ticker in self.tickers:
-            price_str = self._get_price_cnbc(page, ticker)
-            change_pct = self._get_change_cnbc(page)
+            for ticker in self.tickers:
+                price_str = self._get_price_cnbc(page, ticker)
+                change_pct = self._get_change_cnbc(page)
 
-            if price_str:
-                try:
-                    price = float(price_str)
-                    shares = self.portfolio_shares[ticker]
-                    value = price * shares
-                    total_value += value
+                if price_str:
+                    try:
+                        price = float(price_str)
+                        shares = self.portfolio_shares[ticker]
+                        value = price * shares
+                        total_value += value
                     
                     # DATA CLEANING
-                    p_str = f"${price:,.2f}"
-                    v_str = f"${value:,.0f}"
+                        p_str = f"${price:,.2f}"
+                        v_str = f"${value:,.0f}"
                     
-                    if isinstance(shares, float):
-                        s_str = f"{shares:.1f}"
-                    else:
-                        s_str = f"{shares}"
+                        if isinstance(shares, float):
+                            s_str = f"{shares:.1f}"
+                        else:
+                            s_str = f"{shares}"
                         
-                    if "unch" in change_pct.lower():
-                        c_str = "0.00%"
-                    else:
-                        c_str = change_pct
+                        if "unch" in change_pct.lower():
+                            c_str = "0.00%"
+                        else:
+                            c_str = change_pct
 
                     # 2. FILL THE TEMPLATE
-                    line = row_fmt.format(ticker, p_str, s_str, v_str, c_str)
-                    report_lines.append(line)
-                    print(line)
+                        line = row_fmt.format(ticker, p_str, s_str, v_str, c_str)
+                        report_lines.append(line)
+                        print(line)
 
-                    self.save_to_db(ticker, price, shares, value, change_pct)
+                        self.save_to_db(ticker, price, shares, value, change_pct)
                     
-                except ValueError:
-                    self.logger.error(f"Price error: {price_str}")
-            else:
-                # FIXED: Corrected error_ variable name
-                error_line = row_fmt.format(ticker, "ERR", "---", "---", "---")
-                report_lines.append(error_line)
-                print(f"❌ Could not find price for {ticker}")
+                    except ValueError:
+                        self.logger.error(f"Price error: {price_str}")
+                else:
+                    error_line = row_fmt.format(ticker, "ERR", "---", "---", "---")
+                    report_lines.append(error_line)
+                    print(f"❌ Could not find price for {ticker}")
 
-            time.sleep(1) # Polite pause
-        browser.close()
+                time.sleep(1) # Polite pause
+            browser.close()
 
-    # FIXED: These lines are now properly indented inside the run() function
-    report_lines.append("-" * 42)
-    report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
+        report_lines.append("-" * 42)
+        report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
     
-    full_report = "\n".join(report_lines)
-    print("-" * 42)
-    print(f"💰 TOTAL: ${total_value:,.2f}")
+        full_report = "\n".join(report_lines)
+        print("-" * 42)
+        print(f"💰 TOTAL: ${total_value:,.2f}")
     
     self.send_discord_alert(total_value, full_report)
 if __name__ == "__main__":
