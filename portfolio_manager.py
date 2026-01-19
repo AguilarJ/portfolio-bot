@@ -155,7 +155,8 @@ class PortfolioManager:
                         shares = self.portfolio_shares[ticker]
                         value = price * shares
                         total_value += value
-                        
+                        if "UNCH" in change_pct.upper():
+                            change_pct = "0.00%"
                         portfolio_data.append({
                             "ticker": ticker,
                             "price": price,
