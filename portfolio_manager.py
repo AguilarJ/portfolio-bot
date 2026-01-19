@@ -111,7 +111,7 @@ class PortfolioManager:
     # Total Width = 42 characters (Perfect for mobile)
     # ---------------------------------------------------------
     # Tick(6) Price(10) Share(8) Value(10) Chg(8)
-        row_fmt = "{:<6}{:<10}{:<8}{:<10}{:<8}"
+        row_fmt = "{:<6}{:<12}{:<8}{:<11}{:<7}"
     
     # 1. HEADER
         header = row_fmt.format("TICK", "PRICE", "SHARES", "VALUE", "CHG")
