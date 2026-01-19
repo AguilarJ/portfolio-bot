@@ -21,16 +21,18 @@ class PortfolioManager:
         )
         self.logger = logging.getLogger()
 
-        self.portfolio_shares = {
-            "UBER": 127,
-            "VTI": 140,
-            "ASML": 11,
-            "AMZN": 55,
-            "GOOGL": 56,
-            "MSFT": 13,
-            "VXUS": 130.097
+        # 1. UPGRADED DATA STRUCTURE
+        # We now store 'shares' AND 'avg_cost' for every stock.
+        self.portfolio_data = {
+            "VTI":   {"shares": 140,    "cost": 222.57},
+            "GOOGL": {"shares": 56,     "cost": 157.14},
+            "ASML":  {"shares": 11,     "cost": 697.03},
+            "AMZN":  {"shares": 55,     "cost": 182.17},
+            "UBER":  {"shares": 127,    "cost": 70.54},
+            "VXUS":  {"shares": 130.1,  "cost": 61.37},
+            "MSFT":  {"shares": 13,     "cost": 239.37}
         }
-        self.tickers = list(self.portfolio_shares.keys())
+        self.tickers = list(self.portfolio_data.keys())
 
     def _get_price_cnbc(self, page, ticker):
         url = f"https://www.cnbc.com/quotes/{ticker}"
@@ -49,6 +51,7 @@ class PortfolioManager:
             selector = ".QuoteStrip-changeDown, .QuoteStrip-changeUp, .QuoteStrip-changeUnchanged"
             if page.locator(selector).count() > 0:
                 full_text = page.locator(selector).first.inner_text()
+                # Extract clean percentage: "-0.15%"
                 if "(" in full_text and ")" in full_text:
                     return full_text.split("(")[1].replace(")", "")
                 return full_text
@@ -70,15 +73,23 @@ class PortfolioManager:
         except Exception as e:
             self.logger.error(f"Database Error: {e}")
 
-    def send_discord_image(self, total_equity, image_path):
+    def send_discord_image(self, total_equity, total_pl, day_pl, image_path):
         webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
         if not webhook_url:
             print("❌ No Discord Webhook found.")
             return
 
-        message_content = f"**🚀 Daily Portfolio Update**\n**Total Net Worth:** ${total_equity:,.2f}"
+        # Color code the main message
+        emoji = "🟢" if total_pl > 0 else "🔴"
+        day_emoji = "📈" if day_pl > 0 else "📉"
         
-        # Open the image file and send it
+        message_content = (
+            f"**🚀 Daily Portfolio Update**\n"
+            f"**Net Worth:** ${total_equity:,.2f}\n"
+            f"**Total Return:** {emoji} ${total_pl:,.2f}\n"
+            f"**Day's Move:** {day_emoji} ${day_pl:,.2f}"
+        )
+        
         try:
             with open(image_path, 'rb') as f:
                 payload = {"content": message_content}
@@ -88,22 +99,27 @@ class PortfolioManager:
         except Exception as e:
             print(f"❌ Failed to upload image: {e}")
 
-    def _generate_html(self, portfolio_data, total_value):
-        # This HTML creates a dark-mode, professional financial table
-        rows = ""
-        for row in portfolio_data:
-            # Color code the change: Green for +, Red for -
-            color = "#4caf50" if "+" in row['change'] else "#f44336" if "-" in row['change'] else "#ffffff"
+    def _generate_html(self, portfolio_rows, total_value, total_gain_all, day_gain_all):
+        rows_html = ""
+        for row in portfolio_rows:
+            # Color Logic
+            day_color = "#4caf50" if row['day_gain'] >= 0 else "#f44336"
+            total_color = "#4caf50" if row['total_gain'] >= 0 else "#f44336"
             
-            rows += f"""
+            rows_html += f"""
             <tr>
                 <td style="text-align: left; font-weight: bold; color: #fff;">{row['ticker']}</td>
                 <td style="text-align: right;">${row['price']:,.2f}</td>
                 <td style="text-align: right;">{row['shares']:,.1f}</td>
                 <td style="text-align: right;">${row['value']:,.0f}</td>
-                <td style="text-align: right; color: {color};">{row['change']}</td>
+                <td style="text-align: right; color: {day_color};">${row['day_gain']:,.0f}</td>
+                <td style="text-align: right; color: {total_color};">${row['total_gain']:,.0f}</td>
             </tr>
             """
+
+        # Overall Totals Coloring
+        total_color_hex = "#4caf50" if total_gain_all >= 0 else "#f44336"
+        day_color_hex = "#4caf50" if day_gain_all >= 0 else "#f44336"
 
         html = f"""
         <html>
@@ -112,11 +128,11 @@ class PortfolioManager:
                 body {{ background-color: #2f3136; font-family: sans-serif; padding: 20px; }}
                 .container {{ display: inline-block; background-color: #36393f; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }}
                 h2 {{ color: #ffffff; margin-bottom: 10px; border-bottom: 1px solid #7289da; padding-bottom: 10px; }}
-                table {{ border-collapse: collapse; width: 400px; color: #dcddde; }}
+                table {{ border-collapse: collapse; width: 600px; color: #dcddde; }}
                 th {{ text-align: right; padding: 8px; border-bottom: 1px solid #555; color: #b9bbbe; font-size: 12px; }}
                 th:first-child {{ text-align: left; }}
-                td {{ padding: 8px; font-size: 14px; border-bottom: 1px solid #40444b; }}
-                .total {{ margin-top: 15px; font-size: 18px; font-weight: bold; color: #ffffff; text-align: right; }}
+                td {{ padding: 10px 8px; font-size: 14px; border-bottom: 1px solid #40444b; }}
+                .footer {{ margin-top: 15px; display: flex; justify-content: space-between; font-weight: bold; color: #fff; font-size: 16px; }}
             </style>
         </head>
         <body>
@@ -124,11 +140,15 @@ class PortfolioManager:
                 <h2>📊 Portfolio Report</h2>
                 <table>
                     <tr>
-                        <th>TICKER</th> <th>PRICE</th> <th>SHARES</th> <th>VALUE</th> <th>CHANGE</th>
+                        <th>TICKER</th> <th>PRICE</th> <th>SHARES</th> <th>VALUE</th> <th>DAY P&L</th> <th>TOTAL P&L</th>
                     </tr>
-                    {rows}
+                    {rows_html}
                 </table>
-                <div class="total">Total Equity: ${total_value:,.2f}</div>
+                <div class="footer">
+                    <div>Day: <span style="color:{day_color_hex}">${day_gain_all:,.2f}</span></div>
+                    <div>Total: <span style="color:{total_color_hex}">${total_gain_all:,.2f}</span></div>
+                    <div>Equity: ${total_value:,.2f}</div>
+                </div>
             </div>
         </body>
         </html>
@@ -137,55 +157,84 @@ class PortfolioManager:
 
     def run(self):
         self.logger.info("🚀 Starting Portfolio Scan...")
-        total_value = 0.0
-        portfolio_data = []
+        
+        total_equity = 0.0
+        total_pl_all = 0.0
+        day_pl_all = 0.0
+        
+        portfolio_rows = []
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
             page = browser.new_page()
 
-            # 1. Gather Data
             for ticker in self.tickers:
                 price_str = self._get_price_cnbc(page, ticker)
-                change_pct = self._get_change_cnbc(page)
+                change_pct_str = self._get_change_cnbc(page)
                 
                 if price_str:
                     try:
+                        # 1. Basic Data
                         price = float(price_str)
-                        shares = self.portfolio_shares[ticker]
+                        # Retrieve personal data
+                        data = self.portfolio_data[ticker]
+                        shares = data['shares']
+                        cost_basis = data['cost']
+                        
                         value = price * shares
-                        total_value += value
-                        if "UNCH" in change_pct.upper():
-                            change_pct = "0.00%"
-                        portfolio_data.append({
+                        total_equity += value
+
+                        # 2. Math for P&L
+                        # Total P&L = (Price - Cost) * Shares
+                        total_gain = (price - cost_basis) * shares
+                        total_pl_all += total_gain
+
+                        # Day P&L
+                        # Fix UNCH
+                        if "UNCH" in change_pct_str.upper():
+                            change_pct_str = "0.00%"
+                        
+                        # Convert "+0.15%" -> 0.0015
+                        clean_pct = change_pct_str.replace('%', '').replace('+', '')
+                        pct_float = float(clean_pct) / 100.0
+                        
+                        # Calculate previous value to get exact dollar change
+                        # Current = Previous * (1 + pct)
+                        # Previous = Current / (1 + pct)
+                        # Day Gain = Current - Previous
+                        previous_value = value / (1 + pct_float)
+                        day_gain = value - previous_value
+                        day_pl_all += day_gain
+                        
+                        portfolio_rows.append({
                             "ticker": ticker,
                             "price": price,
                             "shares": shares,
                             "value": value,
-                            "change": change_pct
+                            "day_gain": day_gain,
+                            "total_gain": total_gain
                         })
-                        print(f"✅ Scraped {ticker}: ${value:,.0f}")
                         
-                        self.save_to_db(ticker, price, shares, value, change_pct)
-                    except ValueError:
-                        print(f"❌ Error parsing {ticker}")
+                        print(f"✅ {ticker}: ${value:,.0f} | Day: ${day_gain:.2f} | Tot: ${total_gain:.2f}")
+                        
+                        self.save_to_db(ticker, price, shares, value, change_pct_str)
+                    except ValueError as e:
+                        print(f"❌ Error math {ticker}: {e}")
 
                 time.sleep(1)
 
-            # 2. Generate HTML Report
             print("🎨 Generating Image Report...")
-            html_content = self._generate_html(portfolio_data, total_value)
+            html_content = self._generate_html(portfolio_rows, total_equity, total_pl_all, day_pl_all)
             
-            # Load HTML into page and take screenshot
             page.set_content(html_content)
-            # We locate the '.container' so we only screenshot the table, not the whole white page
             screenshot_path = "portfolio_report.png"
+            # Increased wait time to ensure fonts render
+            time.sleep(0.5)
             page.locator(".container").screenshot(path=screenshot_path)
             
             browser.close()
 
-        # 3. Send Image to Discord
-        self.send_discord_image(total_value, "portfolio_report.png")
+        self.send_discord_image(total_equity, total_pl_all, day_pl_all, "portfolio_report.png")
 
 if __name__ == "__main__":
     is_cloud = os.getenv('CI') is not None
