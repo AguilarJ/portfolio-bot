@@ -104,19 +104,16 @@ class PortfolioManager:
         self.logger.info("🚀 Starting Portfolio Scan...")
         total_value = 0.0
         report_lines = []
-    
-    # ---------------------------------------------------------
-    # 📐 THE MASTER TEMPLATE
-    # This defines the EXACT width of every column.
-    # Total Width = 42 characters (Perfect for mobile)
-    # ---------------------------------------------------------
-    # Tick(6) Price(10) Share(8) Value(10) Chg(8)
-        row_fmt = "{:<6}{:<12}{:<8}{:<11}{:<7}"
-    
-    # 1. HEADER
-        header = row_fmt.format("TICK", "PRICE", "SHARES", "VALUE", "CHG")
+        
+        # ---------------------------------------------------------
+        # 📐 ACCOUNTING FORMAT LAYOUT
+        # We separate the "$" from the number so both align perfectly.
+        # ---------------------------------------------------------
+        # HEADER: Manual spacing to match the data columns below
+        # TICK(6) | PRICE (12) | SHARES (8) | VALUE (12) | CHG
+        header = "TICK   PRICE          SHARES   VALUE          CHG"
         report_lines.append(header)
-        report_lines.append("-" * 42)
+        report_lines.append("-" * 52)
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
@@ -132,45 +129,60 @@ class PortfolioManager:
                         shares = self.portfolio_shares[ticker]
                         value = price * shares
                         total_value += value
-                    
-                    # DATA CLEANING
-                        p_str = f"${price:,.2f}"
-                        v_str = f"${value:,.0f}"
-                    
+                        
+                        # 1. ACCOUNTING ALIGNMENT
+                        # We force the number to the RIGHT (>9) inside a fixed block.
+                        # The "$ " is hardcoded at the start.
+                        # Result: "$    84.50"
+                        # Result: "$ 1,358.55"
+                        price_display = f"$ {price:,.2f}".rjust(12) 
+                        # Actually, better manual construct to ensure $ is left:
+                        # "$ " + 9-char number
+                        p_num = f"{price:,.2f}"
+                        p_final = f"$ {p_num:>9}"  # Fixed 11 chars width
+                        
+                        # Value: Same logic
+                        v_num = f"{value:,.0f}"
+                        v_final = f"$ {v_num:>9}"  # Fixed 11 chars width
+
+                        # Shares: Left align standard
                         if isinstance(shares, float):
                             s_str = f"{shares:.1f}"
                         else:
                             s_str = f"{shares}"
-                        
+
+                        # Change: Left align standard
                         if "unch" in change_pct.lower():
                             c_str = "0.00%"
                         else:
                             c_str = change_pct
 
-                    # 2. FILL THE TEMPLATE
-                        line = row_fmt.format(ticker, p_str, s_str, v_str, c_str)
+                        # 2. BUILD THE ROW
+                        # TICK(6) GAP p_final GAP s_str(8) GAP v_final GAP c_str
+                        line = f"{ticker:<6} {p_final}   {s_str:<8} {v_final}   {c_str}"
+                        
                         report_lines.append(line)
                         print(line)
 
                         self.save_to_db(ticker, price, shares, value, change_pct)
-                    
+                        
                     except ValueError:
                         self.logger.error(f"Price error: {price_str}")
                 else:
-                    error_line = row_fmt.format(ticker, "ERR", "---", "---", "---")
+                    error_line = f"{ticker:<6} ERR            ---      ---            ---"
                     report_lines.append(error_line)
                     print(f"❌ Could not find price for {ticker}")
 
-                time.sleep(1) # Polite pause
+                time.sleep(1)
             browser.close()
 
-        report_lines.append("-" * 42)
+        report_lines.append("-" * 52)
         report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
-    
+        
         full_report = "\n".join(report_lines)
-        print("-" * 42)
+        print("-" * 52)
         print(f"💰 TOTAL: ${total_value:,.2f}")
-    
+        
         self.send_discord_alert(total_value, full_report)
 if __name__ == "__main__":
     is_cloud = os.getenv('CI') is not None
