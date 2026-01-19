@@ -33,26 +33,18 @@ class PortfolioManager:
         self.tickers = list(self.portfolio_shares.keys())
 
     def _get_price_cnbc(self, page, ticker):
-        """Gets the price with a Retry Mechanism to prevent missing data."""
         url = f"https://www.cnbc.com/quotes/{ticker}"
-        
-        # Try 3 times before giving up
         for attempt in range(3):
             try:
                 page.goto(url)
-                # Wait up to 5 seconds for the price
                 page.wait_for_selector(".QuoteStrip-lastPrice", timeout=5000)
                 val = page.locator(".QuoteStrip-lastPrice").first.inner_text()
-                clean_val = val.replace(',', '')
-                return clean_val
-            except Exception as e:
-                self.logger.warning(f"Attempt {attempt+1} failed for {ticker}: {e}")
-                time.sleep(2) # Wait 2 seconds and try again
-        
-        return None # Only returns None if all 3 tries fail
+                return val.replace(',', '')
+            except Exception:
+                time.sleep(2)
+        return None
 
     def _get_change_cnbc(self, page):
-        """Gets the percentage change."""
         try:
             selector = ".QuoteStrip-changeDown, .QuoteStrip-changeUp, .QuoteStrip-changeUnchanged"
             if page.locator(selector).count() > 0:
@@ -78,55 +70,85 @@ class PortfolioManager:
         except Exception as e:
             self.logger.error(f"Database Error: {e}")
 
-    def send_discord_alert(self, total_equity, table_text):
+    def send_discord_image(self, total_equity, image_path):
         webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
         if not webhook_url:
             print("❌ No Discord Webhook found.")
             return
 
-        message_content = f"""
-**🚀 Daily Portfolio Update**
-**Total Net Worth:** ${total_equity:,.2f}
-
-```text
-{table_text}
-"""
-        payload = {"content": message_content}
-
+        message_content = f"**🚀 Daily Portfolio Update**\n**Total Net Worth:** ${total_equity:,.2f}"
+        
+        # Open the image file and send it
         try:
-            response = requests.post(webhook_url, json=payload)
-            response.raise_for_status()
-            print("✅ Discord notification sent!")
+            with open(image_path, 'rb') as f:
+                payload = {"content": message_content}
+                files = {"file": (image_path, f, "image/png")}
+                requests.post(webhook_url, data=payload, files=files)
+            print("✅ Discord Image Sent!")
         except Exception as e:
-            print(f"❌ Failed to send Discord notification: {e}")
+            print(f"❌ Failed to upload image: {e}")
+
+    def _generate_html(self, portfolio_data, total_value):
+        # This HTML creates a dark-mode, professional financial table
+        rows = ""
+        for row in portfolio_data:
+            # Color code the change: Green for +, Red for -
+            color = "#4caf50" if "+" in row['change'] else "#f44336" if "-" in row['change'] else "#ffffff"
+            
+            rows += f"""
+            <tr>
+                <td style="text-align: left; font-weight: bold; color: #fff;">{row['ticker']}</td>
+                <td style="text-align: right;">${row['price']:,.2f}</td>
+                <td style="text-align: right;">{row['shares']:,.1f}</td>
+                <td style="text-align: right;">${row['value']:,.0f}</td>
+                <td style="text-align: right; color: {color};">{row['change']}</td>
+            </tr>
+            """
+
+        html = f"""
+        <html>
+        <head>
+            <style>
+                body {{ background-color: #2f3136; font-family: sans-serif; padding: 20px; }}
+                .container {{ display: inline-block; background-color: #36393f; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }}
+                h2 {{ color: #ffffff; margin-bottom: 10px; border-bottom: 1px solid #7289da; padding-bottom: 10px; }}
+                table {{ border-collapse: collapse; width: 400px; color: #dcddde; }}
+                th {{ text-align: right; padding: 8px; border-bottom: 1px solid #555; color: #b9bbbe; font-size: 12px; }}
+                th:first-child {{ text-align: left; }}
+                td {{ padding: 8px; font-size: 14px; border-bottom: 1px solid #40444b; }}
+                .total {{ margin-top: 15px; font-size: 18px; font-weight: bold; color: #ffffff; text-align: right; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h2>📊 Portfolio Report</h2>
+                <table>
+                    <tr>
+                        <th>TICKER</th> <th>PRICE</th> <th>SHARES</th> <th>VALUE</th> <th>CHG</th>
+                    </tr>
+                    {rows}
+                </table>
+                <div class="total">Total Equity: ${total_value:,.2f}</div>
+            </div>
+        </body>
+        </html>
+        """
+        return html
 
     def run(self):
         self.logger.info("🚀 Starting Portfolio Scan...")
         total_value = 0.0
-        report_lines = []
-        
-        # ---------------------------------------------------------
-        # 📐 THE "PERFECT DECIMAL" LAYOUT
-        # 1. Ticker width increased to 8 (Adds breathing room).
-        # 2. Shares forced to 1 decimal place (127.0) so dots line up.
-        # ---------------------------------------------------------
-        # TICK(8)  PRICE(11)  SHARES(>8)  VALUE(11)  CHG(7)
-        row_fmt = "{:<8}{:<11}{:>8}   {:<11}{:<7}"
-        
-        # 1. HEADER
-        # Manually spaced to align with the columns below
-        header = "TICK    PRICE        SHARES   VALUE      CHG"
-        report_lines.append(header)
-        report_lines.append("-" * 48)
+        portfolio_data = []
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
             page = browser.new_page()
 
+            # 1. Gather Data
             for ticker in self.tickers:
                 price_str = self._get_price_cnbc(page, ticker)
                 change_pct = self._get_change_cnbc(page)
-
+                
                 if price_str:
                     try:
                         price = float(price_str)
@@ -134,46 +156,36 @@ class PortfolioManager:
                         value = price * shares
                         total_value += value
                         
-                        # DATA CLEANING
-                        p_str = f"${price:,.2f}"
-                        v_str = f"${value:,.0f}"
+                        portfolio_data.append({
+                            "ticker": ticker,
+                            "price": price,
+                            "shares": shares,
+                            "value": value,
+                            "change": change_pct
+                        })
+                        print(f"✅ Scraped {ticker}: ${value:,.0f}")
                         
-                        # FORCE 1 DECIMAL FOR ALL SHARES
-                        # 127 -> "127.0"
-                        # 130.1 -> "130.1"
-                        # This guarantees they align perfectly on the right.
-                        s_str = f"{float(shares):,.1f}"
-                            
-                        if "unch" in change_pct.lower():
-                            c_str = "0.00%"
-                        else:
-                            c_str = change_pct
-
-                        # 2. FILL THE ROW
-                        line = row_fmt.format(ticker, p_str, s_str, v_str, c_str)
-                        report_lines.append(line)
-                        print(line)
-
                         self.save_to_db(ticker, price, shares, value, change_pct)
-                        
                     except ValueError:
-                        self.logger.error(f"Price error: {price_str}")
-                else:
-                    error_line = f"{ticker:<8}ERR            ---      ---        ---"
-                    report_lines.append(error_line)
-                    print(f"❌ Could not find price for {ticker}")
+                        print(f"❌ Error parsing {ticker}")
 
                 time.sleep(1)
+
+            # 2. Generate HTML Report
+            print("🎨 Generating Image Report...")
+            html_content = self._generate_html(portfolio_data, total_value)
+            
+            # Load HTML into page and take screenshot
+            page.set_content(html_content)
+            # We locate the '.container' so we only screenshot the table, not the whole white page
+            screenshot_path = "portfolio_report.png"
+            page.locator(".container").screenshot(path=screenshot_path)
+            
             browser.close()
 
-        report_lines.append("-" * 48)
-        report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
-        
-        full_report = "\n".join(report_lines)
-        print("-" * 48)
-        print(f"💰 TOTAL: ${total_value:,.2f}")
-        
-        self.send_discord_alert(total_value, full_report)
+        # 3. Send Image to Discord
+        self.send_discord_image(total_value, "portfolio_report.png")
+
 if __name__ == "__main__":
     is_cloud = os.getenv('CI') is not None
     bot = PortfolioManager(headless=is_cloud)
