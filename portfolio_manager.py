@@ -110,8 +110,9 @@ class PortfolioManager:
         # We stick the '$' to the number and align Left.
         # This guarantees a straight vertical line for the eye.
         # ---------------------------------------------------------
-        # Ticker(6)  Price(11)  Shares(8)  Value(11)  Chg(7)
-        row_fmt = "{:<6}{:<11}{:<8}{:<11}{:<7}"
+        # TICK(6)  PRICE(11)  SHARES(>7)  VALUE(11)  CHG(7)
+        # Note the '>' symbol for shares!
+        row_fmt = "{:<6}{:<11}{:>7}   {:<11}{:<7}"
         
         # 1. HEADER
         # Headers will line up exactly with the start of the numbers
