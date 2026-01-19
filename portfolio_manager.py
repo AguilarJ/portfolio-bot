@@ -106,15 +106,18 @@ class PortfolioManager:
         report_lines = []
         
         # ---------------------------------------------------------
-        # 📐 THE "FROZEN DOLLAR" LAYOUT
-        # We manually place the '$' so it never moves.
-        # Then we right-align the number >9 spaces away.
+        # 📐 THE "STRAIGHT WALL" LAYOUT (Left Align)
+        # We stick the '$' to the number and align Left.
+        # This guarantees a straight vertical line for the eye.
         # ---------------------------------------------------------
-        # Header matches the weird spacing of the data below
-        # TICK(6)   $ PRICE(9)    SHARES(7)  $ VALUE(10)   CHG
-        header = "TICK    PRICE         SHARES   VALUE         CHG"
+        # Ticker(6)  Price(11)  Shares(8)  Value(11)  Chg(7)
+        row_fmt = "{:<6}{:<11}{:<8}{:<11}{:<7}"
+        
+        # 1. HEADER
+        # Headers will line up exactly with the start of the numbers
+        header = row_fmt.format("TICK", "PRICE", "SHARES", "VALUE", "CHG")
         report_lines.append(header)
-        report_lines.append("-" * 50)
+        report_lines.append("-" * 43)
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
@@ -132,18 +135,15 @@ class PortfolioManager:
                         total_value += value
                         
                         # DATA CLEANING
-                        # We use >9 to force the number to the RIGHT.
-                        # We hardcode the "$ " before it.
-                        # Result: "$    84.50" (Aligns decimal)
-                        p_str = f"$ {price:>9,.2f}"
-                        
-                        # Value: Same logic, >10 width for bigger numbers
-                        v_str = f"$ {value:>10,.0f}" 
+                        # We create a simple string: "$84.98"
+                        # We DO NOT separate the '$'. We keep it glued.
+                        p_str = f"${price:,.2f}"
+                        v_str = f"${value:,.0f}"
                         
                         if isinstance(shares, float):
-                            s_str = f"{shares:<7.1f}" # Left align shares
+                            s_str = f"{shares:.1f}"
                         else:
-                            s_str = f"{shares:<7}"
+                            s_str = f"{shares}"
                             
                         if "unch" in change_pct.lower():
                             c_str = "0.00%"
@@ -151,8 +151,9 @@ class PortfolioManager:
                             c_str = change_pct
 
                         # 2. FILL THE ROW
-                        # TICK(6)  p_str(11)  s_str(7)  v_str(12)  c_str
-                        line = f"{ticker:<7} {p_str}   {s_str}  {v_str}   {c_str}"
+                        # Everything is forced LEFT (<)
+                        # The '$' will always start at the exact same spot.
+                        line = row_fmt.format(ticker, p_str, s_str, v_str, c_str)
                         
                         report_lines.append(line)
                         print(line)
@@ -162,18 +163,18 @@ class PortfolioManager:
                     except ValueError:
                         self.logger.error(f"Price error: {price_str}")
                 else:
-                    error_line = f"{ticker:<7} ERR           ---      ---            ---"
+                    error_line = row_fmt.format(ticker, "ERR", "---", "---", "---")
                     report_lines.append(error_line)
                     print(f"❌ Could not find price for {ticker}")
 
                 time.sleep(1)
             browser.close()
 
-        report_lines.append("-" * 50)
+        report_lines.append("-" * 43)
         report_lines.append(f"💰 TOTAL: ${total_value:,.2f}")
         
         full_report = "\n".join(report_lines)
-        print("-" * 50)
+        print("-" * 43)
         print(f"💰 TOTAL: ${total_value:,.2f}")
         
         self.send_discord_alert(total_value, full_report)
