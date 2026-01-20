@@ -80,46 +80,43 @@ class PortfolioManager:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
             
-            # --- THE FIX IS HERE ---
-            # We added "HAVING total > 100000"
-            # This ignores any partial scans (e.g. where the script crashed halfway)
-            # So the graph doesn't show fake "crashes" to $0.
+            # --- THE FIX ---
+            # We group by the first 16 characters (YYYY-MM-DD HH:MM)
+            # This lumps the :01, :02, :03 seconds together into one "Run".
             cursor.execute('''
-                SELECT scan_time, SUM(value) as total
+                SELECT substr(scan_time, 1, 16) as scan_minute, SUM(value) as total
                 FROM portfolio_history 
-                GROUP BY scan_time 
-                HAVING total > 100000
-                ORDER BY scan_time ASC
+                GROUP BY scan_minute
+                HAVING total > 80000 
+                ORDER BY scan_minute ASC
             ''')
+            # I lowered the filter to 80k just to be safe, but it handles the grouping now.
+            
             rows = cursor.fetchall()
             conn.close()
 
             if not rows:
+                print("⚠️ No data found for graph (Check your filter threshold)")
                 return None
 
-            dates = [datetime.strptime(r[0], "%Y-%m-%d %H:%M:%S") for r in rows]
+            # Parse dates (we have to add the :00 seconds back to make it a valid timestamp)
+            dates = [datetime.strptime(r[0] + ":00", "%Y-%m-%d %H:%M:%S") for r in rows]
             values = [r[1] for r in rows]
 
             # SETUP DARK MODE PLOT
             plt.style.use('dark_background')
             fig, ax = plt.subplots(figsize=(10, 5))
             
-            # Plot the line
             ax.plot(dates, values, color='#4caf50', linewidth=2, marker='o', markersize=4)
             ax.fill_between(dates, values, color='#4caf50', alpha=0.1)
 
-            # Formatting
             ax.set_title("Net Worth History", color='white', fontsize=14, pad=20)
             ax.grid(True, color='#40444b', linestyle='--', alpha=0.5)
             
-            # Format Date Axis
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
             plt.xticks(rotation=45)
-            
-            # Format Y Axis ($)
             ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
 
-            # Remove borders
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
             ax.spines['bottom'].set_color('#40444b')
