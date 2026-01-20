@@ -80,30 +80,51 @@ class PortfolioManager:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
             
-            # --- THE FIX ---
-            # We group by the first 16 characters (YYYY-MM-DD HH:MM)
-            # This lumps the :01, :02, :03 seconds together into one "Run".
-            cursor.execute('''
-                SELECT substr(scan_time, 1, 16) as scan_minute, SUM(value) as total
-                FROM portfolio_history 
-                GROUP BY scan_minute
-                HAVING total > 80000 
-                ORDER BY scan_minute ASC
-            ''')
-            # I lowered the filter to 80k just to be safe, but it handles the grouping now.
-            
+            # 1. Fetch RAW data (Every single stock entry)
+            cursor.execute('SELECT scan_time, value FROM portfolio_history')
             rows = cursor.fetchall()
             conn.close()
 
             if not rows:
-                print("⚠️ No data found for graph (Check your filter threshold)")
+                print("⚠️ Database is empty.")
                 return None
 
-            # Parse dates (we have to add the :00 seconds back to make it a valid timestamp)
-            dates = [datetime.strptime(r[0] + ":00", "%Y-%m-%d %H:%M:%S") for r in rows]
-            values = [r[1] for r in rows]
+            # 2. PYTHON GROUPING (The "Glue")
+            # We bucket data by the MINUTE (YYYY-MM-DD HH:MM)
+            history = {}
+            for r in rows:
+                timestamp = r[0] 
+                value = r[1]
+                # "2026-01-19 17:40:29" -> "2026-01-19 17:40"
+                minute_key = timestamp[:16] 
+                
+                if minute_key not in history:
+                    history[minute_key] = 0.0
+                history[minute_key] += value
 
-            # SETUP DARK MODE PLOT
+            # 3. CONVERT TO LISTS
+            # Now we have "Total Net Worth per Minute"
+            # We sort them by time so the line goes Left -> Right
+            sorted_minutes = sorted(history.keys())
+            
+            dates = []
+            values = []
+            
+            for minute in sorted_minutes:
+                total_val = history[minute]
+                # Only keep points that look like a FULL portfolio (> $80k)
+                # This filters out the "partial scans" automatically
+                if total_val > 80000:
+                    dates.append(datetime.strptime(minute, "%Y-%m-%d %H:%M"))
+                    values.append(total_val)
+
+            if not values:
+                print("⚠️ No full scans found (Totals were all < $80k). Graph skipped.")
+                return None
+                
+            print(f"📈 Plotting {len(values)} valid data points...")
+
+            # 4. PLOT IT
             plt.style.use('dark_background')
             fig, ax = plt.subplots(figsize=(10, 5))
             
@@ -112,11 +133,11 @@ class PortfolioManager:
 
             ax.set_title("Net Worth History", color='white', fontsize=14, pad=20)
             ax.grid(True, color='#40444b', linestyle='--', alpha=0.5)
-            
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
             plt.xticks(rotation=45)
             ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
 
+            # Clean borders
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
             ax.spines['bottom'].set_color('#40444b')
@@ -130,9 +151,15 @@ class PortfolioManager:
             return graph_path
         except Exception as e:
             print(f"❌ Graph Error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def send_discord_report(self, total_equity, total_pl, day_pl, report_path, graph_path):
+        # REPLACE THIS LINE:
+# webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
+
+# WITH THIS:
         webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
         if not webhook_url:
             print("❌ No Discord Webhook found.")
