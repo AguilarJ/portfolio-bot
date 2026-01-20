@@ -3,6 +3,8 @@ import requests
 import time
 import sqlite3
 import logging
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 
@@ -21,8 +23,7 @@ class PortfolioManager:
         )
         self.logger = logging.getLogger()
 
-        # 1. UPGRADED DATA STRUCTURE
-        # We now store 'shares' AND 'avg_cost' for every stock.
+        # YOUR DATA
         self.portfolio_data = {
             "VTI":   {"shares": 140,    "cost": 222.57},
             "GOOGL": {"shares": 56,     "cost": 157.14},
@@ -34,6 +35,7 @@ class PortfolioManager:
         }
         self.tickers = list(self.portfolio_data.keys())
 
+    # ... (Standard Scrapers match previous version) ...
     def _get_price_cnbc(self, page, ticker):
         url = f"https://www.cnbc.com/quotes/{ticker}"
         for attempt in range(3):
@@ -51,7 +53,6 @@ class PortfolioManager:
             selector = ".QuoteStrip-changeDown, .QuoteStrip-changeUp, .QuoteStrip-changeUnchanged"
             if page.locator(selector).count() > 0:
                 full_text = page.locator(selector).first.inner_text()
-                # Extract clean percentage: "-0.15%"
                 if "(" in full_text and ")" in full_text:
                     return full_text.split("(")[1].replace(")", "")
                 return full_text
@@ -73,13 +74,71 @@ class PortfolioManager:
         except Exception as e:
             self.logger.error(f"Database Error: {e}")
 
-    def send_discord_image(self, total_equity, total_pl, day_pl, image_path):
+    # --- NEW: GRAPH GENERATOR 📊 ---
+    def _generate_history_graph(self):
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            
+            # Get all history, group by timestamp to get Total Net Worth per run
+            cursor.execute('''
+                SELECT scan_time, SUM(value) 
+                FROM portfolio_history 
+                GROUP BY scan_time 
+                ORDER BY scan_time ASC
+            ''')
+            rows = cursor.fetchall()
+            conn.close()
+
+            if not rows:
+                return None
+
+            dates = [datetime.strptime(r[0], "%Y-%m-%d %H:%M:%S") for r in rows]
+            values = [r[1] for r in rows]
+
+            # SETUP DARK MODE PLOT
+            plt.style.use('dark_background')
+            fig, ax = plt.subplots(figsize=(10, 5))
+            
+            # Plot the line
+            ax.plot(dates, values, color='#4caf50', linewidth=2, marker='o', markersize=4)
+            
+            # Fill under the line for a cool "Area Chart" look
+            ax.fill_between(dates, values, color='#4caf50', alpha=0.1)
+
+            # Formatting
+            ax.set_title("Net Worth History", color='white', fontsize=14, pad=20)
+            ax.grid(True, color='#40444b', linestyle='--', alpha=0.5)
+            
+            # Format Date Axis
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
+            plt.xticks(rotation=45)
+            
+            # Format Y Axis ($)
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
+
+            # Remove borders for clean look
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['bottom'].set_color('#40444b')
+            ax.spines['left'].set_color('#40444b')
+
+            plt.tight_layout()
+            graph_path = "history_graph.png"
+            plt.savefig(graph_path, facecolor='#2f3136') # Match Discord Dark Mode
+            plt.close()
+            
+            return graph_path
+        except Exception as e:
+            print(f"❌ Graph Error: {e}")
+            return None
+
+    def send_discord_report(self, total_equity, total_pl, day_pl, report_path, graph_path):
         webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
         if not webhook_url:
             print("❌ No Discord Webhook found.")
             return
 
-        # Color code the main message
         emoji = "🟢" if total_pl > 0 else "🔴"
         day_emoji = "📈" if day_pl > 0 else "📉"
         
@@ -90,19 +149,23 @@ class PortfolioManager:
             f"**Day's Move:** {day_emoji} ${day_pl:,.2f}"
         )
         
+        # SEND BOTH IMAGES (Report + Graph)
+        files = {}
+        if report_path:
+            files["file1"] = (report_path, open(report_path, "rb"), "image/png")
+        if graph_path:
+            files["file2"] = (graph_path, open(graph_path, "rb"), "image/png")
+
         try:
-            with open(image_path, 'rb') as f:
-                payload = {"content": message_content}
-                files = {"file": (image_path, f, "image/png")}
-                requests.post(webhook_url, data=payload, files=files)
-            print("✅ Discord Image Sent!")
+            requests.post(webhook_url, data={"content": message_content}, files=files)
+            print("✅ Discord Report + Graph Sent!")
         except Exception as e:
-            print(f"❌ Failed to upload image: {e}")
+            print(f"❌ Failed to send Discord: {e}")
 
     def _generate_html(self, portfolio_rows, total_value, total_gain_all, day_gain_all):
+        # (Same HTML generation as before)
         rows_html = ""
         for row in portfolio_rows:
-            # Color Logic
             day_color = "#4caf50" if row['day_gain'] >= 0 else "#f44336"
             total_color = "#4caf50" if row['total_gain'] >= 0 else "#f44336"
             
@@ -116,8 +179,7 @@ class PortfolioManager:
                 <td style="text-align: right; color: {total_color};">${row['total_gain']:,.0f}</td>
             </tr>
             """
-
-        # Overall Totals Coloring
+        
         total_color_hex = "#4caf50" if total_gain_all >= 0 else "#f44336"
         day_color_hex = "#4caf50" if day_gain_all >= 0 else "#f44336"
 
@@ -157,11 +219,9 @@ class PortfolioManager:
 
     def run(self):
         self.logger.info("🚀 Starting Portfolio Scan...")
-        
         total_equity = 0.0
         total_pl_all = 0.0
         day_pl_all = 0.0
-        
         portfolio_rows = []
 
         with sync_playwright() as p:
@@ -174,34 +234,20 @@ class PortfolioManager:
                 
                 if price_str:
                     try:
-                        # 1. Basic Data
                         price = float(price_str)
-                        # Retrieve personal data
                         data = self.portfolio_data[ticker]
                         shares = data['shares']
                         cost_basis = data['cost']
-                        
                         value = price * shares
                         total_equity += value
 
-                        # 2. Math for P&L
-                        # Total P&L = (Price - Cost) * Shares
+                        # Math
                         total_gain = (price - cost_basis) * shares
                         total_pl_all += total_gain
 
-                        # Day P&L
-                        # Fix UNCH
-                        if "UNCH" in change_pct_str.upper():
-                            change_pct_str = "0.00%"
-                        
-                        # Convert "+0.15%" -> 0.0015
+                        if "UNCH" in change_pct_str.upper(): change_pct_str = "0.00%"
                         clean_pct = change_pct_str.replace('%', '').replace('+', '')
                         pct_float = float(clean_pct) / 100.0
-                        
-                        # Calculate previous value to get exact dollar change
-                        # Current = Previous * (1 + pct)
-                        # Previous = Current / (1 + pct)
-                        # Day Gain = Current - Previous
                         previous_value = value / (1 + pct_float)
                         day_gain = value - previous_value
                         day_pl_all += day_gain
@@ -214,27 +260,28 @@ class PortfolioManager:
                             "day_gain": day_gain,
                             "total_gain": total_gain
                         })
-                        
-                        print(f"✅ {ticker}: ${value:,.0f} | Day: ${day_gain:.2f} | Tot: ${total_gain:.2f}")
-                        
+                        print(f"✅ {ticker}: ${value:,.0f}")
                         self.save_to_db(ticker, price, shares, value, change_pct_str)
-                    except ValueError as e:
-                        print(f"❌ Error math {ticker}: {e}")
-
+                    except ValueError:
+                        print(f"❌ Error {ticker}")
                 time.sleep(1)
 
-            print("🎨 Generating Image Report...")
+            # 1. REPORT IMAGE
+            print("🎨 Generating HTML Report...")
             html_content = self._generate_html(portfolio_rows, total_equity, total_pl_all, day_pl_all)
-            
             page.set_content(html_content)
-            screenshot_path = "portfolio_report.png"
-            # Increased wait time to ensure fonts render
             time.sleep(0.5)
-            page.locator(".container").screenshot(path=screenshot_path)
+            report_path = "portfolio_report.png"
+            page.locator(".container").screenshot(path=report_path)
             
             browser.close()
 
-        self.send_discord_image(total_equity, total_pl_all, day_pl_all, "portfolio_report.png")
+        # 2. GRAPH IMAGE
+        print("📈 Generating History Graph...")
+        graph_path = self._generate_history_graph()
+
+        # 3. SEND BOTH
+        self.send_discord_report(total_equity, total_pl_all, day_pl_all, report_path, graph_path)
 
 if __name__ == "__main__":
     is_cloud = os.getenv('CI') is not None
