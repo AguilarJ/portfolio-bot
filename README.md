@@ -52,18 +52,18 @@ git clone [https://github.com/YOUR_USERNAME/portfolio-bot.git](https://github.co
 cd portfolio-bot 
 ```
 
-2. Install Dependencies
+2. Install Dependencies**
+
 pip install -r requirements.txt
+
 3. Set Environment Variables Create a .env file or export the variable in your terminal:
 
-Bash
-
 export DISCORD_WEBHOOK_URL="your_discord_webhook_url"
+
 4. Run Manually
 
-Bash
-
 python portfolio_manager.py
+
 🤖 Automation (GitHub Actions)
 The project includes a .github/workflows/main.yml file that defines the cron schedule:
 
