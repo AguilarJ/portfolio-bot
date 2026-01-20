@@ -56,7 +56,7 @@ cd portfolio-bot
 ```bash
 pip install -r requirements.txt
 ```
-**3. Set Environment Variables Create a .env file or export the variable in your terminal:
+**3. Set Environment Variables Create a .env file or export the variable in your terminal:**
 ```bash
 export DISCORD_WEBHOOK_URL="your_discord_webhook_url"
 ```
