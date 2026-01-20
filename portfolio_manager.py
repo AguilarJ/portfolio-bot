@@ -156,10 +156,6 @@ class PortfolioManager:
             return None
 
     def send_discord_report(self, total_equity, total_pl, day_pl, report_path, graph_path):
-        # REPLACE THIS LINE:
-# webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
-
-# WITH THIS:
         webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
         if not webhook_url:
             print("❌ No Discord Webhook found.")
@@ -168,23 +164,31 @@ class PortfolioManager:
         emoji = "🟢" if total_pl > 0 else "🔴"
         day_emoji = "📈" if day_pl > 0 else "📉"
         
-        message_content = (
+        # MESSAGE 1: The Table (Main Priority)
+        main_content = (
             f"**🚀 Daily Portfolio Update**\n"
             f"**Net Worth:** ${total_equity:,.2f}\n"
             f"**Total Return:** {emoji} ${total_pl:,.2f}\n"
             f"**Day's Move:** {day_emoji} ${day_pl:,.2f}"
         )
         
-        # SEND BOTH IMAGES (Report + Graph)
-        files = {}
-        if report_path:
-            files["file1"] = (report_path, open(report_path, "rb"), "image/png")
-        if graph_path:
-            files["file2"] = (graph_path, open(graph_path, "rb"), "image/png")
-
         try:
-            requests.post(webhook_url, data={"content": message_content}, files=files)
-            print("✅ Discord Report + Graph Sent!")
+            # Send the Table
+            if report_path:
+                with open(report_path, 'rb') as f:
+                    payload = {"content": main_content}
+                    files = {"file": (report_path, f, "image/png")}
+                    requests.post(webhook_url, data=payload, files=files)
+                print("✅ Discord Table Sent!")
+            
+            # Send the Graph (as a reply/follow-up)
+            if graph_path:
+                with open(graph_path, 'rb') as f:
+                    payload = {"content": "**📈 Historical Trend**"} # Optional caption
+                    files = {"file": (graph_path, f, "image/png")}
+                    requests.post(webhook_url, data=payload, files=files)
+                print("✅ Discord Graph Sent!")
+                
         except Exception as e:
             print(f"❌ Failed to send Discord: {e}")
 
