@@ -80,11 +80,15 @@ class PortfolioManager:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
             
-            # Get all history, group by timestamp to get Total Net Worth per run
+            # --- THE FIX IS HERE ---
+            # We added "HAVING total > 100000"
+            # This ignores any partial scans (e.g. where the script crashed halfway)
+            # So the graph doesn't show fake "crashes" to $0.
             cursor.execute('''
-                SELECT scan_time, SUM(value) 
+                SELECT scan_time, SUM(value) as total
                 FROM portfolio_history 
                 GROUP BY scan_time 
+                HAVING total > 100000
                 ORDER BY scan_time ASC
             ''')
             rows = cursor.fetchall()
@@ -102,8 +106,6 @@ class PortfolioManager:
             
             # Plot the line
             ax.plot(dates, values, color='#4caf50', linewidth=2, marker='o', markersize=4)
-            
-            # Fill under the line for a cool "Area Chart" look
             ax.fill_between(dates, values, color='#4caf50', alpha=0.1)
 
             # Formatting
@@ -117,7 +119,7 @@ class PortfolioManager:
             # Format Y Axis ($)
             ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
 
-            # Remove borders for clean look
+            # Remove borders
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
             ax.spines['bottom'].set_color('#40444b')
@@ -125,7 +127,7 @@ class PortfolioManager:
 
             plt.tight_layout()
             graph_path = "history_graph.png"
-            plt.savefig(graph_path, facecolor='#2f3136') # Match Discord Dark Mode
+            plt.savefig(graph_path, facecolor='#2f3136')
             plt.close()
             
             return graph_path
