@@ -1,3 +1,4 @@
+import json 
 import os
 import requests
 import time
@@ -23,16 +24,15 @@ class PortfolioManager:
         )
         self.logger = logging.getLogger()
 
-        # YOUR DATA
-        self.portfolio_data = {
-            "VTI":   {"shares": 140,    "cost": 222.57},
-            "GOOGL": {"shares": 56,     "cost": 157.14},
-            "ASML":  {"shares": 11,     "cost": 697.03},
-            "AMZN":  {"shares": 55,     "cost": 182.17},
-            "UBER":  {"shares": 127,    "cost": 70.54},
-            "VXUS":  {"shares": 130.1,  "cost": 61.37},
-            "MSFT":  {"shares": 13,     "cost": 239.37}
-        }
+        # --- NEW: LOAD FROM FILE ---
+        try:
+            with open('portfolio.json', 'r') as f:
+                self.portfolio_data = json.load(f)
+            self.logger.info("✅ Loaded portfolio.json successfully.")
+        except FileNotFoundError:
+            self.logger.error("❌ portfolio.json not found! Please create it.")
+            self.portfolio_data = {}
+        
         self.tickers = list(self.portfolio_data.keys())
 
     # ... (Standard Scrapers match previous version) ...
