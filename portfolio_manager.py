@@ -156,37 +156,31 @@ class PortfolioManager:
             return None
 
     def send_discord_report(self, total_equity, total_pl, day_pl, report_path, graph_path):
-        webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
-        if not webhook_url:
-            print("❌ No Discord Webhook found.")
-            return
-
-        emoji = "🟢" if total_pl > 0 else "🔴"
-        day_emoji = "📈" if day_pl > 0 else "📉"
+        import time  # <--- Add this import here (or at top of file)
         
-        # MESSAGE 1: The Table (Main Priority)
-        main_content = (
-            f"**🚀 Daily Portfolio Update**\n"
-            f"**Net Worth:** ${total_equity:,.2f}\n"
-            f"**Total Return:** {emoji} ${total_pl:,.2f}\n"
-            f"**Day's Move:** {day_emoji} ${day_pl:,.2f}"
-        )
+        webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
+        # ... (rest of the setup code is the same) ...
         
         try:
-            # Send the Table
+            # 1. Send the Table
             if report_path:
                 with open(report_path, 'rb') as f:
                     payload = {"content": main_content}
                     files = {"file": (report_path, f, "image/png")}
-                    requests.post(webhook_url, data=payload, files=files)
+                    r = requests.post(webhook_url, data=payload, files=files)
+                    r.raise_for_status() # <--- Checks if Discord blocked us
                 print("✅ Discord Table Sent!")
             
-            # Send the Graph (as a reply/follow-up)
+            # PAUSE FOR 2 SECONDS (To avoid spam filter)
+            time.sleep(2) 
+            
+            # 2. Send the Graph
             if graph_path:
                 with open(graph_path, 'rb') as f:
-                    payload = {"content": "**📈 Historical Trend**"} # Optional caption
+                    payload = {"content": "**📈 Historical Trend**"} 
                     files = {"file": (graph_path, f, "image/png")}
-                    requests.post(webhook_url, data=payload, files=files)
+                    r = requests.post(webhook_url, data=payload, files=files)
+                    r.raise_for_status() # <--- Checks if Discord blocked us
                 print("✅ Discord Graph Sent!")
                 
         except Exception as e:
