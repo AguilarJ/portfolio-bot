@@ -193,7 +193,7 @@ class PortfolioManager:
 
     def send_discord_report(self, total_equity, total_pl, day_pl, report_path, graph_path):
         import time  # <--- Add this import here (or at top of file)
-        main_content = f"**💰 Daily Portfolio Scan**\nTotal Equity: ${total_equity:,.2f}\nDay Change: {day_pl}"
+        main_content = f"**💰 Daily Portfolio Scan**\nTotal Equity: ${total_equity:,.2f}\nDay Change: ${day_pl:,.2f}"
         webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
         # ... (rest of the setup code is the same) ...
         
