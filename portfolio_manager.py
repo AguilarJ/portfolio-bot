@@ -10,27 +10,52 @@ from datetime import datetime
 from playwright.sync_api import sync_playwright
 
 class PortfolioManager:
-    def __init__(self, db_name='portfolio.db', headless=False):
+    def __init__(self, db_name='portfolio.db', headless=True):
         self.db_name = db_name
         self.headless = headless
         
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler("bot_activity.log"),
-                logging.StreamHandler()
-            ]
-        )
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
         self.logger = logging.getLogger()
 
-        # --- NEW: LOAD FROM FILE ---
+        self.portfolio_data = {}
+        
         try:
             with open('portfolio.json', 'r') as f:
-                self.portfolio_data = json.load(f)
-            self.logger.info("✅ Loaded portfolio.json successfully.")
+                raw_data = json.load(f)
+            
+            # --- NEW: CALCULATE AVERAGES AUTOMATICALLY ---
+            # The bot loops through your "buy lists" and does the math for you.
+            for ticker, lots in raw_data.items():
+                
+                # specific check to handle if you used the old format by mistake
+                if isinstance(lots, dict): 
+                    lots = [lots] # Force it into a list
+                
+                total_shares = 0
+                total_invested = 0.0
+                
+                for lot in lots:
+                    s = float(lot['shares'])
+                    p = float(lot.get('price', lot.get('cost', 0))) # Support 'price' or 'cost' keys
+                    
+                    total_shares += s
+                    total_invested += (s * p)
+                
+                if total_shares > 0:
+                    avg_cost = total_invested / total_shares
+                else:
+                    avg_cost = 0
+                    
+                # Store the final calculated result in memory
+                self.portfolio_data[ticker] = {
+                    "shares": total_shares,
+                    "cost": avg_cost
+                }
+                
+            self.logger.info("✅ Loaded and calculated portfolio data.")
+            
         except FileNotFoundError:
-            self.logger.error("❌ portfolio.json not found! Please create it.")
+            self.logger.error("❌ portfolio.json not found!")
             self.portfolio_data = {}
         
         self.tickers = list(self.portfolio_data.keys())
