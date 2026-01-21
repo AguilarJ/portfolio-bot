@@ -59,7 +59,18 @@ class PortfolioManager:
             self.portfolio_data = {}
         
         self.tickers = list(self.portfolio_data.keys())
-
+        import sqlite3
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS portfolio_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scan_time TIMESTAMP,
+                    value REAL
+                )
+            ''')
+            conn.commit()
+        self.logger.info("✅ Database initialized successfully.")
     # ... (Standard Scrapers match previous version) ...
     def _get_price_cnbc(self, page, ticker):
         url = f"https://www.cnbc.com/quotes/{ticker}"
@@ -182,7 +193,7 @@ class PortfolioManager:
 
     def send_discord_report(self, total_equity, total_pl, day_pl, report_path, graph_path):
         import time  # <--- Add this import here (or at top of file)
-        
+        main_content = f"**💰 Daily Portfolio Scan**\nTotal Equity: ${total_equity:,.2f}\nDay Change: {day_pl}"
         webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
         # ... (rest of the setup code is the same) ...
         
