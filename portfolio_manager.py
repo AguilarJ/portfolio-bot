@@ -53,7 +53,7 @@ class PortfolioManager:
         
         self.tickers = list(self.portfolio_data.keys())
         
-        # --- DB FIX: Added 'change_pct' column so saving doesn't crash ---
+        # Database Setup
         with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -99,7 +99,6 @@ class PortfolioManager:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # Fixed the SQL query to match the new table structure
             cursor.execute('''
                 INSERT INTO portfolio_history (scan_time, ticker, price, shares, value, change_pct)
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -109,9 +108,7 @@ class PortfolioManager:
         except Exception as e:
             self.logger.error(f"Database Error: {e}")
 
-    # --- UPDATED: Send only table, no graph ---
     def send_discord_report(self, total_equity, total_pl, day_pl, total_day_pct, report_path):
-        # Added Total Day % to the text message
         emoji = "🟢" if day_pl >= 0 else "🔴"
         main_content = (f"**💰 Daily Portfolio Scan**\n"
                         f"Total Equity: **${total_equity:,.2f}**\n"
@@ -135,12 +132,14 @@ class PortfolioManager:
             day_color = "#4caf50" if row['day_gain'] >= 0 else "#f44336"
             total_color = "#4caf50" if row['total_gain'] >= 0 else "#f44336"
             
+            # --- UPDATE: Added the 'pct_change' column here ---
             rows_html += f"""
             <tr>
                 <td style="text-align: left; font-weight: bold; color: #fff;">{row['ticker']}</td>
                 <td style="text-align: right;">${row['price']:,.2f}</td>
                 <td style="text-align: right;">{row['shares']:,.1f}</td>
                 <td style="text-align: right;">${row['value']:,.0f}</td>
+                <td style="text-align: right; color: {day_color};">{row['pct_change']}</td>
                 <td style="text-align: right; color: {day_color};">${row['day_gain']:,.0f}</td>
                 <td style="text-align: right; color: {total_color};">${row['total_gain']:,.0f}</td>
             </tr>
@@ -149,7 +148,6 @@ class PortfolioManager:
         total_color_hex = "#4caf50" if total_gain_all >= 0 else "#f44336"
         day_color_hex = "#4caf50" if day_gain_all >= 0 else "#f44336"
 
-        # ADDED: Display the Total Percentage in the footer
         html = f"""
         <html>
         <head>
@@ -169,7 +167,7 @@ class PortfolioManager:
                 <h2>📊 Portfolio Report</h2>
                 <table>
                     <tr>
-                        <th>TICKER</th> <th>PRICE</th> <th>SHARES</th> <th>VALUE</th> <th>DAY P&L</th> <th>TOTAL P&L</th>
+                        <th>TICKER</th> <th>PRICE</th> <th>SHARES</th> <th>VALUE</th> <th>DAY %</th> <th>DAY P&L</th> <th>TOTAL P&L</th>
                     </tr>
                     {rows_html}
                 </table>
@@ -208,7 +206,6 @@ class PortfolioManager:
                         value = price * shares
                         total_equity += value
 
-                        # Math
                         total_gain = (price - cost_basis) * shares
                         total_pl_all += total_gain
 
@@ -216,18 +213,19 @@ class PortfolioManager:
                         clean_pct = change_pct_str.replace('%', '').replace('+', '')
                         pct_float = float(clean_pct) / 100.0
                         
-                        # Calculate Previous Value to get Day Gain
                         previous_value_stock = value / (1 + pct_float)
                         day_gain = value - previous_value_stock
                         day_pl_all += day_gain
                         
+                        # --- UPDATE: Added 'pct_change' to the list ---
                         portfolio_rows.append({
                             "ticker": ticker,
                             "price": price,
                             "shares": shares,
                             "value": value,
                             "day_gain": day_gain,
-                            "total_gain": total_gain
+                            "total_gain": total_gain,
+                            "pct_change": change_pct_str
                         })
                         print(f"✅ {ticker}: ${value:,.0f} ({change_pct_str})")
                         self.save_to_db(ticker, price, shares, value, change_pct_str)
@@ -235,15 +233,12 @@ class PortfolioManager:
                         print(f"❌ Error {ticker}")
                 time.sleep(1)
 
-            # --- NEW: Calculate Total Portfolio Percentage ---
-            # Total Pct = (Total Day P&L / Yesterday's Equity) * 100
             previous_equity_all = total_equity - day_pl_all
             if previous_equity_all > 0:
                 total_day_pct = (day_pl_all / previous_equity_all) * 100
             else:
                 total_day_pct = 0.0
 
-            # 1. REPORT IMAGE
             print("🎨 Generating HTML Report...")
             html_content = self._generate_html(portfolio_rows, total_equity, total_pl_all, day_pl_all, total_day_pct)
             page.set_content(html_content)
@@ -253,7 +248,6 @@ class PortfolioManager:
             
             browser.close()
 
-        # 2. SEND REPORT (Pass the new Percentage)
         self.send_discord_report(total_equity, total_pl_all, day_pl_all, total_day_pct, report_path)
 
 if __name__ == "__main__":
