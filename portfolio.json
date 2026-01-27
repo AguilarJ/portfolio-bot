@@ -4,10 +4,10 @@
     { "shares": 1,   "price": 334.90 }
   ],
   "GOOGL": [
-    { "shares": 56, "price": 157.14 }
+    { "shares": 52, "price": 158.56 }
   ],
   "ASML": [
-    { "shares": 11, "price": 697.03 }
+    { "shares": 8, "price": 696.35 }
   ],
   "AMZN": [
     { "shares": 55, "price": 182.17 }
@@ -19,6 +19,10 @@
     { "shares": 130.1, "price": 61.37 }
   ],
   "MSFT": [
-    { "shares": 13, "price": 239.37 }
+    { "shares": 13, "price": 239.37 },
+    {"shares": 3, "price": 440.12}
+  ],
+  "MA": [
+    { "shares": 13, "price": 526.19 }
   ]
 }
