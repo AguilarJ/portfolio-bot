@@ -2,4 +2,3 @@ pandas
 playwright
 requests
 lxml
-matplotlib

@@ -4,8 +4,6 @@ import requests
 import time
 import sqlite3
 import logging
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 
@@ -23,20 +21,16 @@ class PortfolioManager:
             with open('portfolio.json', 'r') as f:
                 raw_data = json.load(f)
             
-            # --- NEW: CALCULATE AVERAGES AUTOMATICALLY ---
-            # The bot loops through your "buy lists" and does the math for you.
             for ticker, lots in raw_data.items():
-                
-                # specific check to handle if you used the old format by mistake
                 if isinstance(lots, dict): 
-                    lots = [lots] # Force it into a list
+                    lots = [lots]
                 
                 total_shares = 0
                 total_invested = 0.0
                 
                 for lot in lots:
                     s = float(lot['shares'])
-                    p = float(lot.get('price', lot.get('cost', 0))) # Support 'price' or 'cost' keys
+                    p = float(lot.get('price', lot.get('cost', 0)))
                     
                     total_shares += s
                     total_invested += (s * p)
@@ -46,32 +40,36 @@ class PortfolioManager:
                 else:
                     avg_cost = 0
                     
-                # Store the final calculated result in memory
                 self.portfolio_data[ticker] = {
                     "shares": total_shares,
                     "cost": avg_cost
                 }
                 
-            self.logger.info("✅ Loaded and calculated portfolio data.")
+            self.logger.info("✅ Loaded portfolio data.")
             
         except FileNotFoundError:
             self.logger.error("❌ portfolio.json not found!")
             self.portfolio_data = {}
         
         self.tickers = list(self.portfolio_data.keys())
-        import sqlite3
+        
+        # --- DB FIX: Added 'change_pct' column so saving doesn't crash ---
         with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS portfolio_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     scan_time TIMESTAMP,
-                    value REAL
+                    ticker TEXT,
+                    price REAL,
+                    shares REAL,
+                    value REAL,
+                    change_pct TEXT
                 )
             ''')
             conn.commit()
         self.logger.info("✅ Database initialized successfully.")
-    # ... (Standard Scrapers match previous version) ...
+
     def _get_price_cnbc(self, page, ticker):
         url = f"https://www.cnbc.com/quotes/{ticker}"
         for attempt in range(3):
@@ -96,134 +94,42 @@ class PortfolioManager:
         except Exception:
             return "0.00%"
 
-    def save_to_db(self, ticker, price, shares, value, headline):
+    def save_to_db(self, ticker, price, shares, value, change_pct):
         try:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # Fixed the SQL query to match the new table structure
             cursor.execute('''
-                INSERT INTO portfolio_history (scan_time, ticker, price, shares, value, news_headline)
+                INSERT INTO portfolio_history (scan_time, ticker, price, shares, value, change_pct)
                 VALUES (?, ?, ?, ?, ?, ?)
-            ''', (timestamp, ticker, price, shares, value, headline))
+            ''', (timestamp, ticker, price, shares, value, change_pct))
             conn.commit()
             conn.close()
         except Exception as e:
             self.logger.error(f"Database Error: {e}")
 
-    # --- NEW: GRAPH GENERATOR 📊 ---
-    def _generate_history_graph(self):
-        try:
-            conn = sqlite3.connect(self.db_name)
-            cursor = conn.cursor()
-            
-            # 1. Fetch RAW data (Every single stock entry)
-            cursor.execute('SELECT scan_time, value FROM portfolio_history')
-            rows = cursor.fetchall()
-            conn.close()
-
-            if not rows:
-                print("⚠️ Database is empty.")
-                return None
-
-            # 2. PYTHON GROUPING (The "Glue")
-            # We bucket data by the MINUTE (YYYY-MM-DD HH:MM)
-            history = {}
-            for r in rows:
-                timestamp = r[0] 
-                value = r[1]
-                # "2026-01-19 17:40:29" -> "2026-01-19 17:40"
-                minute_key = timestamp[:16] 
-                
-                if minute_key not in history:
-                    history[minute_key] = 0.0
-                history[minute_key] += value
-
-            # 3. CONVERT TO LISTS
-            # Now we have "Total Net Worth per Minute"
-            # We sort them by time so the line goes Left -> Right
-            sorted_minutes = sorted(history.keys())
-            
-            dates = []
-            values = []
-            
-            for minute in sorted_minutes:
-                total_val = history[minute]
-                # Only keep points that look like a FULL portfolio (> $80k)
-                # This filters out the "partial scans" automatically
-                if total_val > 80000:
-                    dates.append(datetime.strptime(minute, "%Y-%m-%d %H:%M"))
-                    values.append(total_val)
-
-            if not values:
-                print("⚠️ No full scans found (Totals were all < $80k). Graph skipped.")
-                return None
-                
-            print(f"📈 Plotting {len(values)} valid data points...")
-
-            # 4. PLOT IT
-            plt.style.use('dark_background')
-            fig, ax = plt.subplots(figsize=(10, 5))
-            
-            ax.plot(dates, values, color='#4caf50', linewidth=2, marker='o', markersize=4)
-            ax.fill_between(dates, values, color='#4caf50', alpha=0.1)
-
-            ax.set_title("Net Worth History", color='white', fontsize=14, pad=20)
-            ax.grid(True, color='#40444b', linestyle='--', alpha=0.5)
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
-            plt.xticks(rotation=45)
-            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
-
-            # Clean borders
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['bottom'].set_color('#40444b')
-            ax.spines['left'].set_color('#40444b')
-
-            plt.tight_layout()
-            graph_path = "history_graph.png"
-            plt.savefig(graph_path, facecolor='#2f3136')
-            plt.close()
-            
-            return graph_path
-        except Exception as e:
-            print(f"❌ Graph Error: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
-
-    def send_discord_report(self, total_equity, total_pl, day_pl, report_path, graph_path):
-        import time  # <--- Add this import here (or at top of file)
-        main_content = f"**💰 Daily Portfolio Scan**\nTotal Equity: ${total_equity:,.2f}\nDay Change: ${day_pl:,.2f}"
+    # --- UPDATED: Send only table, no graph ---
+    def send_discord_report(self, total_equity, total_pl, day_pl, total_day_pct, report_path):
+        # Added Total Day % to the text message
+        emoji = "🟢" if day_pl >= 0 else "🔴"
+        main_content = (f"**💰 Daily Portfolio Scan**\n"
+                        f"Total Equity: **${total_equity:,.2f}**\n"
+                        f"Day Change: {emoji} **${day_pl:+,.2f}** (`{total_day_pct:+.2f}%`)")
+        
         webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
-        # ... (rest of the setup code is the same) ...
         
         try:
-            # 1. Send the Table
             if report_path:
                 with open(report_path, 'rb') as f:
                     payload = {"content": main_content}
                     files = {"file": (report_path, f, "image/png")}
-                    r = requests.post(webhook_url, data=payload, files=files)
-                    r.raise_for_status() # <--- Checks if Discord blocked us
-                print("✅ Discord Table Sent!")
-            
-            # PAUSE FOR 2 SECONDS (To avoid spam filter)
-            time.sleep(2) 
-            
-            # 2. Send the Graph
-            if graph_path:
-                with open(graph_path, 'rb') as f:
-                    payload = {"content": "**📈 Historical Trend**"} 
-                    files = {"file": (graph_path, f, "image/png")}
-                    r = requests.post(webhook_url, data=payload, files=files)
-                    r.raise_for_status() # <--- Checks if Discord blocked us
-                print("✅ Discord Graph Sent!")
-                
+                    requests.post(webhook_url, data=payload, files=files)
+                print("✅ Discord Report Sent!")
         except Exception as e:
             print(f"❌ Failed to send Discord: {e}")
 
-    def _generate_html(self, portfolio_rows, total_value, total_gain_all, day_gain_all):
-        # (Same HTML generation as before)
+    def _generate_html(self, portfolio_rows, total_value, total_gain_all, day_gain_all, total_day_pct):
         rows_html = ""
         for row in portfolio_rows:
             day_color = "#4caf50" if row['day_gain'] >= 0 else "#f44336"
@@ -243,6 +149,7 @@ class PortfolioManager:
         total_color_hex = "#4caf50" if total_gain_all >= 0 else "#f44336"
         day_color_hex = "#4caf50" if day_gain_all >= 0 else "#f44336"
 
+        # ADDED: Display the Total Percentage in the footer
         html = f"""
         <html>
         <head>
@@ -267,7 +174,7 @@ class PortfolioManager:
                     {rows_html}
                 </table>
                 <div class="footer">
-                    <div>Day: <span style="color:{day_color_hex}">${day_gain_all:,.2f}</span></div>
+                    <div>Day: <span style="color:{day_color_hex}">${day_gain_all:,.2f} ({total_day_pct:+.2f}%)</span></div>
                     <div>Total: <span style="color:{total_color_hex}">${total_gain_all:,.2f}</span></div>
                     <div>Equity: ${total_value:,.2f}</div>
                 </div>
@@ -308,8 +215,10 @@ class PortfolioManager:
                         if "UNCH" in change_pct_str.upper(): change_pct_str = "0.00%"
                         clean_pct = change_pct_str.replace('%', '').replace('+', '')
                         pct_float = float(clean_pct) / 100.0
-                        previous_value = value / (1 + pct_float)
-                        day_gain = value - previous_value
+                        
+                        # Calculate Previous Value to get Day Gain
+                        previous_value_stock = value / (1 + pct_float)
+                        day_gain = value - previous_value_stock
                         day_pl_all += day_gain
                         
                         portfolio_rows.append({
@@ -320,15 +229,23 @@ class PortfolioManager:
                             "day_gain": day_gain,
                             "total_gain": total_gain
                         })
-                        print(f"✅ {ticker}: ${value:,.0f}")
+                        print(f"✅ {ticker}: ${value:,.0f} ({change_pct_str})")
                         self.save_to_db(ticker, price, shares, value, change_pct_str)
                     except ValueError:
                         print(f"❌ Error {ticker}")
                 time.sleep(1)
 
+            # --- NEW: Calculate Total Portfolio Percentage ---
+            # Total Pct = (Total Day P&L / Yesterday's Equity) * 100
+            previous_equity_all = total_equity - day_pl_all
+            if previous_equity_all > 0:
+                total_day_pct = (day_pl_all / previous_equity_all) * 100
+            else:
+                total_day_pct = 0.0
+
             # 1. REPORT IMAGE
             print("🎨 Generating HTML Report...")
-            html_content = self._generate_html(portfolio_rows, total_equity, total_pl_all, day_pl_all)
+            html_content = self._generate_html(portfolio_rows, total_equity, total_pl_all, day_pl_all, total_day_pct)
             page.set_content(html_content)
             time.sleep(0.5)
             report_path = "portfolio_report.png"
@@ -336,12 +253,8 @@ class PortfolioManager:
             
             browser.close()
 
-        # 2. GRAPH IMAGE
-        print("📈 Generating History Graph...")
-        graph_path = self._generate_history_graph()
-
-        # 3. SEND BOTH
-        self.send_discord_report(total_equity, total_pl_all, day_pl_all, report_path, graph_path)
+        # 2. SEND REPORT (Pass the new Percentage)
+        self.send_discord_report(total_equity, total_pl_all, day_pl_all, total_day_pct, report_path)
 
 if __name__ == "__main__":
     is_cloud = os.getenv('CI') is not None
