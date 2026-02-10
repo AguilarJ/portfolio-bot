@@ -1,19 +1,19 @@
 {
   "VTI": [
-    { "shares": 140, "price": 222.57 },
+    { "shares": 142, "price": 224.17 },
     { "shares": 1,   "price": 334.90 }
   ],
   "GOOGL": [
-    { "shares": 52, "price": 158.56 }
+    { "shares": 40, "price": 164.09 }
   ],
   "ASML": [
-    { "shares": 8, "price": 696.35 }
+    { "shares": 5, "price": 700.60 }
   ],
   "AMZN": [
-    { "shares": 55, "price": 182.17 }
+    { "shares": 45, "price": 184.73 }
   ],
   "UBER": [
-    { "shares": 127, "price": 70.54 }
+    { "shares": 73, "price": 73.95 }
   ],
   "VXUS": [
     { "shares": 130.1, "price": 61.37 }
@@ -23,6 +23,9 @@
     {"shares": 3, "price": 440.12}
   ],
   "MA": [
-    { "shares": 14, "price": 526.19 }
+    { "shares": 15, "price": 526.19 }
+  ],
+  "MCO": [
+    {"shares": 24, "price": 450.26}
   ]
 }
