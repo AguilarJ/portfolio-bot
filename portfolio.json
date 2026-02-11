@@ -1,7 +1,6 @@
 {
   "VTI": [
-    { "shares": 142, "price": 224.17 },
-    { "shares": 1,   "price": 334.90 }
+    { "shares": 142, "price": 224.17 }
   ],
   "GOOGL": [
     { "shares": 40, "price": 164.09 }
