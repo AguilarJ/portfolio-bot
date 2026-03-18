@@ -3,23 +3,25 @@
     { "shares": 142, "price": 224.17 }
   ],
   "GOOGL": [
-    { "shares": 40, "price": 164.09 }
+    { "shares": 23, "price": 162.72 }
   ],
-  "ASML": [
-    { "shares": 5, "price": 700.60 }
+  "BN": [
+    { "shares": 196, "price": 46.87 }
   ],
   "AMZN": [
-    { "shares": 45, "price": 184.73 }
+    { "shares": 39, "price": 186.41 }
   ],
-  "UBER": [
-    { "shares": 73, "price": 73.95 }
+  "MELI": [
+    { "shares": 3, "price": 1655.93 }
+  ],
+  "UFPT": [
+    {"shares": 25, "price": 201.85}
   ],
   "VXUS": [
-    { "shares": 130.1, "price": 61.37 }
+    { "shares": 131, "price": 61.52 }
   ],
   "MSFT": [
-    { "shares": 13, "price": 239.37 },
-    {"shares": 3, "price": 440.12}
+    { "shares": 18, "price": 290.69 }
   ],
   "MA": [
     { "shares": 15, "price": 526.19 }
