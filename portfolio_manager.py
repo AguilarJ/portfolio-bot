@@ -84,14 +84,28 @@ class PortfolioManager:
 
     def _get_change_cnbc(self, page):
         try:
-            selector = ".QuoteStrip-changeDown, .QuoteStrip-changeUp, .QuoteStrip-changeUnchanged"
-            if page.locator(selector).count() > 0:
-                full_text = page.locator(selector).first.inner_text()
-                if "(" in full_text and ")" in full_text:
-                    return full_text.split("(")[1].replace(")", "")
-                return full_text
+            # 1. Check if the stock is DOWN (CNBC uses the 'changeDown' class for red)
+            if page.locator(".QuoteStrip-changeDown").count() > 0:
+                full_text = page.locator(".QuoteStrip-changeDown").first.inner_text()
+                # Extract the percentage from the parentheses
+                val = full_text.split("(")[1].replace(")", "") if "(" in full_text else full_text
+                # Strip any existing signs and FORCE a negative sign
+                val = val.replace("-", "").replace("+", "").strip()
+                return f"-{val}"
+            
+            # 2. Check if the stock is UP (CNBC uses 'changeUp' for green)
+            elif page.locator(".QuoteStrip-changeUp").count() > 0:
+                full_text = page.locator(".QuoteStrip-changeUp").first.inner_text()
+                val = full_text.split("(")[1].replace(")", "") if "(" in full_text else full_text
+                # Strip signs to ensure it's a clean positive string
+                val = val.replace("-", "").replace("+", "").strip()
+                return val
+                
+            # 3. If it's unchanged or fails to find the classes
             return "0.00%"
-        except Exception:
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to parse change percentage: {e}")
             return "0.00%"
 
     def save_to_db(self, ticker, price, shares, value, change_pct):
