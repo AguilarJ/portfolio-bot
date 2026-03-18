@@ -2,28 +2,32 @@ name: Daily Portfolio Scan
 
 on:
   schedule:
-    # Runs at 21:00 UTC (1:00 PM PST) every Mon-Fri
-    - cron: '0 21 * * 1-5'
-  workflow_dispatch: # Allows you to run it manually from the Actions tab
+    # 19:59 UTC = 3:59 PM EDT / 12:59 PM PDT
+    - cron: '59 19 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   run_bot:
     runs-on: ubuntu-latest
+    env:
+      # Forces GitHub to use the newest Node.js to hide that warning
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4 # <-- UPDATED to v4
 
     # 1. DOWNLOAD DATABASE (if it exists from yesterday)
     - name: Download Database Artifact
       uses: actions/download-artifact@v4
+      continue-on-error: true # <-- Kept this at the step level
       with:
         name: portfolio-db
         path: .
-      continue-on-error: true # It's okay if it fails on the very first run
+        # (Removed the duplicate continue-on-error from inside 'with')
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5 # <-- UPDATED to v5
       with:
         python-version: '3.10'
 
@@ -44,4 +48,4 @@ jobs:
       with:
         name: portfolio-db
         path: portfolio.db
-        retention-days: 90 # Keep history for 3 months
+        retention-days: 90
